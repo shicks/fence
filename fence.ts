@@ -1,80 +1,35 @@
 // Basic structures....?
 
 import {PersistentBinaryUnionFind} from './pbuf.js';
-
-// Example 4x4 grid:
-//   0   1  2  3  4
-//     +-------------+
-//   5 |  6  7  8  9 |
-//  10 | 11 12 13 14 |
-//  15 | 16 17 18 19 |
-//  20 | 21 22 23 24 |
-//     +-------------+
-//  25   26 27 28 29
-// We map 0..4, 26..29, and 5N to 0 immediatey.
-
-class Grid {
-  constructor(readonly h: number, readonly w: number) {}
-
-  isValid(i: number): boolean {
-    const dy = this.w + 1;
-    if (i < dy) return false;
-    if (!(i % dy)) return false;
-    if (i > dy * (this.h + 1)) return false;
-    return true;
-  }
-
-  neighbors(i: number): number[] {
-    const dy = this.w + 1;
-    return [i - dy, i + 1, i + dy, i - 1];
-  }
-
-  x(index: number): number {
-    return (index % (this.w + 1)) - 1;
-  }
-
-  y(index: number): number {
-    return Math.floor(index / (this.w + 1));
-  }
-
-  index(y: number, x: number): number {
-    return (y + 1) * (this.w + 1) + x + 1;
-  }
-
-  initialize(): PersistentBinaryUnionFind {
-    let uf = PersistentBinaryUnionFind.create((h + 2) * (w + 1));
-    for (let i = 1; i <= w; i++) {
-      uf = uf.union(0, i).union(0, (h + 1) * (w + 1) + i);
-    }
-    for (let i = 1; i <= h + 1; i++) {
-      uf = uf.union(0, i * (w + 1));
-    }
-    return uf;
-  }
-}
+import {Grid, Cell, Vertex, Halfedge, Edge} from './grid.js';
 
 class Slitherlink {
   grid: Grid;
   uf: PersistentBinaryUnionFind;
   constraints = new Map<number, number>();
+  cellMap = new Map<number, number>();
 
   constructor(h: number, w: number) {
     this.grid = new Grid(h, w);
+    for (const cell of this.grid.cells) {
+      this.cellMap.set(cell.y << 16 | cell.x, cell.index);
+    }
     this.uf = this.grid.initialize();
   }
 
   addConstraint(y: number, x: number, edges: number): void {
-    this.constraints.set(this.grid.index(y, x), edges);
+    this.constraints.set(this.cellMap.get(y << 16 | x), edges);
   }
 
   // returns the (inclusive) range of possible edge numbers given neighbors
   range(y: number, x: number): [number, number] {
-    const index = this.grid.index(y, x);
+    const cell = this.grid.cells[this.cellMap.get(y << 16 | x).index];
     const counts = new DebtSet<number>();
     let minWalls = 0;
-    const center = this.uf.find(index);
-    for (const n of this.grid.neighbors(index)) {
-      const nv = this.uf.find(n);
+    const center = this.uf.find(cell.index);
+    for (const h of cell.incident) {
+      const n = h.twin.facet;
+      const nv = this.uf.find(n.index);
       if (nv === ~center) {
         minWalls++;
       } else if (nv !== center) {
@@ -97,6 +52,7 @@ class Slitherlink {
 
 }
 
+// This is a multiset where elements can go negative.
 class DebtSet<T> {
   private data = new Map<T, number>();
   add(elem: T, count = 1) {
@@ -129,13 +85,59 @@ class ColorMap {
 }
 
 
-class Grid {
-  constructor(readonly h: number, readonly w: number) {}
-}
+// class Vertex {
+//   readonly edges!: readonly Halfedge[];
+//   constructor(readonly y: number, readonly x: number, readonly id: number) {}
+//   toString(): string { return `v${this.y},${this.x}`; }
+// }
+
+// class Halfedge {
+//   readonly edge: number; // ID of edge, shared by both twins
+//   readonly twin!: Halfedge;
+//   readonly next!: Halfedge;
+//   readonly prev!: Halfedge;
+//   readonly vert!: Vertex;
+//   readonly cell!: Cell;
+//   constructor(readonly y: number, readonly x: number, readonly dir: boolean) {}
+//   toString(): string { return `h${this.y},${this.x},${this.dir}`; }
+// }
+
+// class Cell {
+//   readonly outside?: boolean;
+//   readonly edges!: readonly Halfedge[];
+//   constructor(readonly y: number, readonly x: number, readonly id: number) {}
+//   toString(): string { return `c${this.y},${this.x}`; }
+// }
+
+// class Grid {
+//   constructor(readonly h: number, readonly w: number) {
+//     const outside = new Cell(0, 0, 0);
+//     const edges = new Map<string, Halfedge>();
+//     const cells = new Map<string, Cell>();
+//     const verts = new Map<string, Vertex>();
+    
 
 
-class Cell {
-  constructor(readonly g: Grid, readonly y: number, readonly x: number) {}
+//   }
+// }
 
-  // neighbors, etc
-}
+// class Vertex {
+  
+// }
+
+// class Halfedge {
+//   readonly vertex: Vertex;
+//   readonly cell?: Cell;
+//   readonly next: Halfedge;
+//   readonly prev: Halfedge;
+//   readonly twin: Halfedge;
+// }
+
+// class Cell {
+//   constructor(readonly g: Grid, readonly y: number, readonly x: number) {
+
+
+//   }
+
+//   // neighbors, etc
+// }
