@@ -12,7 +12,7 @@ export class PersistentBinaryUnionFind {
     return new PersistentBinaryUnionFind(PArray.create(size, i => i),
                                          PArray.create(size, () => 0).set(0, Infinity));
   }
-  private constructor(private readonly parent: PArray<number>,
+  private constructor(private parent: PArray<number>,
                       private rank: PArray<number>) {}
   find(index: number): number {
     const find = new Find(this.parent, index);

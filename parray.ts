@@ -29,11 +29,12 @@ export class PArray<T> {
     return new PArray(Array.from({length}, (_, i) => f(i)));
   }
 
+  // Ensures `this.data` is an array.
   private reroot(): void {
-    const data = this.data;
+    const data = this.data as Diff<T>;
     if (!data.parent) return;
     data.parent.reroot();
-    this.data = data.parent.data;
+    this.data = data.parent.data as T[];
     data.parent.data = {
       parent: this,
       index: data.index,
@@ -44,12 +45,12 @@ export class PArray<T> {
 
   get(index: number): T {
     this.reroot();
-    return this.data[index];
+    return (this.data as T[])[index];
   }
 
   set(index: number, value: T): PArray<T> {
-    const data = this.data;
     this.reroot();
+    const data = this.data as T[]; // TODO - was _before_ reroot...?
     const previous = data[index];
     data[index] = value;
     const next = new PArray<T>(data);
@@ -59,6 +60,18 @@ export class PArray<T> {
       value: previous,
     };
     return next;
+  }
+
+  [Symbol.iterator]() {
+    this.reroot();
+    const len = (this.data as T[]).length;
+    let i = 0;
+    return {
+      [Symbol.iterator]() { return this; },
+      next: () => i < len ?
+          {value: this.get(i++), done: false} :
+          {value: undefined, done: true},
+    };
   }
 }
 

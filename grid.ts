@@ -104,7 +104,7 @@ export class Grid {
       }
       const h = {type: 'halfedge',
                  id, index, edge, twin: null!, next: null!, prev: null!,
-                 vert: null!, cell: null!, cw: null!, ccw: null!};
+                 vert: null!, cell: null!, cw: null!, ccw: null!} as const;
       hs.set(id, h);
       edge.halfedges.push(h);
     }
@@ -166,9 +166,14 @@ export class Grid {
       seq(get(hs, y - 1, width, 0xc0), get(hs, y, width, 0xc0));
     }
     for (let x = 1; x < width; x++) {
-      seq(get(hs, 0, x - 1, 0x0c), get(hs, x, 0, 0x0c));
+      seq(get(hs, 0, x - 1, 0x0c), get(hs, 0, x, 0x0c));
       seq(get(hs, height, x, 0x04), get(hs, height, x - 1, 0x04));
     }
+    // Add four outside corners
+    seq(get(hs, 0, 0, 0x40), get(hs, 0, 0, 0x0c));
+    seq(get(hs, 0, width - 1, 0x0c), get(hs, 0, width, 0xc0));
+    seq(get(hs, height - 1, width, 0xc0), get(hs, height, width - 1, 0x04));
+    seq(get(hs, height, 0, 0x04), get(hs, height - 1, 0, 0x40));
 
     // Second pass: connect cells and vertices.
     for (const c of cs.values()) {

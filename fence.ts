@@ -1,9 +1,14 @@
 // Basic structures....?
 
 import {PersistentBinaryUnionFind} from './pbuf.js';
-import {Grid, Cell, Vertex, Halfedge, Edge} from './grid.js';
+import {Grid} from './grid.js';
 
-class Slitherlink {
+function assert<T>(arg: T): NonNullable<T> {
+  if (arg == null) throw new Error(`Expected non-null: ${arg}`);
+  return arg!;
+}
+
+export class Slitherlink {
   grid: Grid;
   uf: PersistentBinaryUnionFind;
   constraints = new Map<number, number>();
@@ -14,21 +19,21 @@ class Slitherlink {
     for (const cell of this.grid.cells) {
       this.cellMap.set(cell.y << 16 | cell.x, cell.index);
     }
-    this.uf = this.grid.initialize();
+    this.uf = PersistentBinaryUnionFind.create(this.grid.cells.length);
   }
 
   addConstraint(y: number, x: number, edges: number): void {
-    this.constraints.set(this.cellMap.get(y << 16 | x), edges);
+    this.constraints.set(assert(this.cellMap.get(y << 16 | x)), edges);
   }
 
   // returns the (inclusive) range of possible edge numbers given neighbors
   range(y: number, x: number): [number, number] {
-    const cell = this.grid.cells[this.cellMap.get(y << 16 | x).index];
+    const cell = this.grid.cells[assert(this.cellMap.get(y << 16 | x))];
     const counts = new DebtSet<number>();
     let minWalls = 0;
     const center = this.uf.find(cell.index);
     for (const h of cell.incident) {
-      const n = h.twin.facet;
+      const n = h.twin.cell;
       const nv = this.uf.find(n.index);
       if (nv === ~center) {
         minWalls++;
@@ -56,11 +61,11 @@ class Slitherlink {
 class DebtSet<T> {
   private data = new Map<T, number>();
   add(elem: T, count = 1) {
-    const v = data.get(elem);
+    const v = this.data.get(elem) || 0;
     if (v === -count) {
-      data.delete(elem);
+      this.data.delete(elem);
     } else {
-      data.set(elem, v + count);
+      this.data.set(elem, v + count);
     } 
   }
   [Symbol.iterator]() {
@@ -69,20 +74,20 @@ class DebtSet<T> {
 }
 
 
-// Basically a unionfind-like algorithm
-class ColorMap {
-  private readonly data: ReadonlyMap<number, number>;
-  constructor(data: ReadonlyMap<number, number> = new Map()) {
-    this.data = data;
-  }
+// // Basically a unionfind-like algorithm
+// class ColorMap {
+//   private readonly data: ReadonlyMap<number, number>;
+//   constructor(data: ReadonlyMap<number, number> = new Map()) {
+//     this.data = data;
+//   }
 
-  // persistent/readonly
-  set(orginal: number, target: number): ColorMap {
-    // TODO - ... simplify?
-    return new ColorMap(new Map([...this], [original, target]));
-  }
+//   // persistent/readonly
+//   set(orginal: number, target: number): ColorMap {
+//     // TODO - ... simplify?
+//     return new ColorMap(new Map([...this], [original, target]));
+//   }
 
-}
+// }
 
 
 // class Vertex {

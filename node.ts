@@ -1,4 +1,4 @@
-import {Grid, Edge, Vertex, Cell} from './grid.js';
+import {Edge, Vertex, Cell} from './grid.js';
 import {Slitherlink} from './fence.js';
 
 type Elt = Edge|Vertex|Cell;
@@ -14,8 +14,9 @@ const colors = [
 ] as const;
 
 export function show(sl: Slitherlink): string {
-  const elts: Elt[][] = Array.from({length: sl.height * 2 + 1}, () => []);
-  for (const v of sl.grid.vertices) {
+  const g = sl.grid;
+  const elts: Elt[][] = Array.from({length: g.height * 2 + 1}, () => []);
+  for (const v of g.vertices) {
     elts[v.y * 2][v.x * 2] = v;
   }
   for (const c of sl.grid.cells) {
@@ -24,8 +25,8 @@ export function show(sl: Slitherlink): string {
   }
   for (const e of sl.grid.edges) {
     const h = e.halfedges[0];
-    const y = h.vertex.y + h.twin.vertex.y;
-    const x = h.vertex.x + h.twin.vertex.x;
+    const y = h.vert.y + h.twin.vert.y;
+    const x = h.vert.x + h.twin.vert.x;
     elts[y][x] = e;
   }
   // Figure out relevant colors to show
@@ -42,7 +43,7 @@ export function show(sl: Slitherlink): string {
   const strs = elts.map(row => row.map(el => {
     switch (el.type) {
     case 'vertex': 
-      return '·';
+      return '+';
     case 'edge': {
       const h = el.halfedges[0];
       const c1 = sl.uf.find(h.cell.index);
@@ -56,7 +57,7 @@ export function show(sl: Slitherlink): string {
       let col = colorMap.get(pos(sl.uf.find(el.index)));
       if (col && sl.uf.find(el.index) < 0) col = (col * 0x101) >> 4 & 0xff;
       const txt = ' ' + (sl.constraints.get(el.index) || '·') + ' ';
-      const esc = col && `\x1b[38;5;${col & 0xf};48;5;${col >> 4}m`;
+      const esc = col ? `\x1b[38;5;${col & 0xf};48;5;${col >> 4}m` : '';
       return `${esc}${txt}${col ? '\x1b[m' : ''}`;
     }
     }
@@ -71,9 +72,9 @@ function pos(x: number) {
 class Multiset<T> {
   private readonly data = new Map<T, number>();
   add(elem: T) {
-    data.set((data.get(elem) || 0) + 1);
+    this.data.set(elem, (this.data.get(elem) || 0) + 1);
   }
   [Symbol.iterator]() {
-    return [...data].sort(([, a], [, b]) => b - a)[Symbol.iterator]();
+    return [...this.data].sort(([, a], [, b]) => b - a)[Symbol.iterator]();
   }
 }

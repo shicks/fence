@@ -8,7 +8,7 @@ export class PersistentUnionFind {
     return new PersistentUnionFind(PArray.create(size, i => i),
                                    PArray.create(size, () => 0));
   }
-  private constructor(private readonly parent: PArray<number>,
+  private constructor(private parent: PArray<number>,
                       private rank: PArray<number>) {}
   find(index: number): number {
     const find = new Find(this.parent, index);
