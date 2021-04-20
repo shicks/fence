@@ -13,7 +13,9 @@ const colors = [
   0x45, 0x13,
 ] as const;
 
-export function show(sl: Slitherlink): string {
+export function show(sl: Slitherlink,
+                     f: (c: Cell) => unknown =
+                       c => sl.constraints.get(c.index) ?? ''): string {
   const g = sl.grid;
   const elts: Elt[][] = Array.from({length: g.height * 2 + 1}, () => []);
   for (const v of g.vertices) {
@@ -36,8 +38,8 @@ export function show(sl: Slitherlink): string {
   }
   const colorMap = new Map<number, number>();
   for (const [c, count] of colorSet) {
-    colorMap.set(c, colors[colorMap.size]);
     if (colorMap.size >= colors.length || count < 2) break;
+    colorMap.set(c, colors[colorMap.size]);
   }
   // Stringify
   const strs = elts.map(row => row.map(el => {
@@ -49,14 +51,21 @@ export function show(sl: Slitherlink): string {
       const c1 = sl.uf.find(h.cell.index);
       const c2 = sl.uf.find(h.twin.cell.index);
       const horiz = el.direction === 'horizontal';
-      if (c1 === c2) return horiz ? ' × ' : '×';
+      if (c1 === c2) {
+        let col = colorMap.get(pos(c1));
+        if (col && c1 < 0) col = (col * 0x101) >> 4 & 0xff;
+        const txt = horiz ? '   ' : ' ';
+        const esc = col ? `\x1b[38;5;${col & 0xf};48;5;${col >> 4}m` : '';
+        return `${esc}${txt}${col ? '\x1b[m' : ''}`;
+        //return horiz ? '   ' : ' '; //'·×·' : '×';
+      }
       if (c1 === ~c2) return horiz ? '———' : '|';
-      return horiz ? '   ' : ' ';
+      return horiz ? '···' : ':';
     }
     case 'cell': {
       let col = colorMap.get(pos(sl.uf.find(el.index)));
       if (col && sl.uf.find(el.index) < 0) col = (col * 0x101) >> 4 & 0xff;
-      const txt = ' ' + (sl.constraints.get(el.index) || '·') + ' ';
+      const txt = (String(f(el)) || '·').padEnd(2, ' ').padStart(3, ' ');
       const esc = col ? `\x1b[38;5;${col & 0xf};48;5;${col >> 4}m` : '';
       return `${esc}${txt}${col ? '\x1b[m' : ''}`;
     }

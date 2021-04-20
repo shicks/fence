@@ -21,12 +21,20 @@
 //   // ...
 // }
 
+let tag=0;
 
 export class PArray<T> {
+public TAG!:number;
   private constructor(private data: T[]|Diff<T>) {}
 
   static create<T>(length: number, f: (index: number) => T): PArray<T> {
-    return new PArray(Array.from({length}, (_, i) => f(i)));
+const a= new PArray(Array.from({length}, (_, i) => f(i)));a.TAG=tag++;return a;
+//    return new PArray(Array.from({length}, (_, i) => f(i)));
+  }
+
+  get length(): number {
+    return Array.isArray(this.data) ?
+        this.data.length : this.data.parent.length;
   }
 
   // Ensures `this.data` is an array.
@@ -59,6 +67,9 @@ export class PArray<T> {
       index,
       value: previous,
     };
+next.TAG=tag++;
+console.log(`#${this.TAG}: ${index} <- ${value}  => #${next.TAG}`);
+if(index===55&&value as any===47)throw new Error('??');
     return next;
   }
 
