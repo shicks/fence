@@ -34,15 +34,12 @@ export class PersistentBinaryUnionFind {
     const ry = this.rank.get(yy);
 if((PersistentBinaryUnionFind as any).EXPECT_FROZEN) throw new Error(`${x} => ${cx} (${rx}); ${y} => ${cy} (${ry})`);
     if (rx > ry) {
-console.log(`union1 ${x} ${y}: ${yy} -> ${yx}`);
       return new PersistentBinaryUnionFind(this.parent.set(yy, yx), this.rank);
     } else if (rx < ry) {
-console.log(`union2 ${x} ${y}: ${xx} -> ${xy}`);
       return new PersistentBinaryUnionFind(this.parent.set(xx, xy), this.rank);
     }
-    const a= new PersistentBinaryUnionFind(this.parent.set(yy, yx),
+    return new PersistentBinaryUnionFind(this.parent.set(yy, yx),
                                          this.rank.set(xx, rx + 1));
-console.log(`union3 ${x} ${y}: ${yy} -> ${yx} +rank ${xx}\n${a}`);return a;
   }
   toString(): string {
     const parts = [];
@@ -54,7 +51,6 @@ console.log(`union3 ${x} ${y}: ${yy} -> ${yx} +rank ${xx}\n${a}`);return a;
 }
 
 class Find {
-d='      ';
   inv: boolean;
   index: number;
   constructor(public parent: PArray<number>, index: number) {
@@ -64,25 +60,12 @@ d='      ';
   find() {
     const inv0 = this.inv;
     const i = this.index;
-    /*const*/let fi = this.parent.get(i);
+    let fi = this.parent.get(i);
     if (fi === i) return; // NOTE: we should never have (i => ~i)
-console.log(`${this.d}find ${inv0?'~':''}${this.index} => ${fi}`);
-if(this.index===55&&fi===47)console.dir(this.parent);
-    // const inv = fi < 0;
-    // if (inv) {
-    //   this.inv = !this.inv;
-    //   this.index = ~fi;
-    // } else {
-    //   this.index = fi;
-    // }
-    if (this.inv) {this.inv = false; fi = ~fi;}
-    if (fi<0) {this.index = ~fi; this.inv = !this.inv;} else {this.index=fi;}
-
-this.d+=' ';
+    if (this.inv) fi = ~fi;
+    this.inv = fi < 0;
+    this.index = this.inv ? ~fi : fi;
     this.find();
-this.d=this.d.substring(1);
-//if(this.parent.get(i)!==(inv?~this.index:this.index))
-console.log(`${this.d} ${i} -> ${inv0?'~':''}${this.index}`);
-    this.parent = this.parent.set(i, (inv0!==this.inv) ? ~this.index : this.index);
+    this.parent = this.parent.set(i, (inv0 !== this.inv) ? ~this.index : this.index);
   }
 }

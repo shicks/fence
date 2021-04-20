@@ -21,15 +21,11 @@
 //   // ...
 // }
 
-let tag=0;
-
 export class PArray<T> {
-public TAG!:number;
   private constructor(private data: T[]|Diff<T>) {}
 
   static create<T>(length: number, f: (index: number) => T): PArray<T> {
-const a= new PArray(Array.from({length}, (_, i) => f(i)));a.TAG=tag++;return a;
-//    return new PArray(Array.from({length}, (_, i) => f(i)));
+    return new PArray(Array.from({length}, (_, i) => f(i)));
   }
 
   get length(): number {
@@ -67,9 +63,6 @@ const a= new PArray(Array.from({length}, (_, i) => f(i)));a.TAG=tag++;return a;
       index,
       value: previous,
     };
-next.TAG=tag++;
-console.log(`#${this.TAG}: ${index} <- ${value}  => #${next.TAG}`);
-if(index===55&&value as any===47)throw new Error('??');
     return next;
   }
 

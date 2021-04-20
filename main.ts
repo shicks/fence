@@ -44,21 +44,22 @@ let s2 = Slitherlink.create(7, 7,
                             [6, 2, 2],
                             [6, 5, 3]);
 
-let [s] = [s1, s1, s2];
+let [s] = [s2, s1, s2];
 
 let s0!: Slitherlink;
 let i = 0;
+s = s.handleSpecialCases();
 while (s !== s0) {
   s0 = s;
   s = s.rangeCheck();
   s = s.vertexCheck();
   console.log(show(s), '\n');
-  if (i++ > 8) break;
+  if (i++ > 18) break;
 }
 //(PersistentBinaryUnionFind as any).EXPECT_FROZEN = true;
-(s as any).EXPECT_FROZEN = true;
-s.rangeCheck();
-s.vertexCheck();
+//(s as any).EXPECT_FROZEN = true;
+//s.rangeCheck();
+//s.vertexCheck();
 
 // , c => {const r=s.range(c.y,c.x);return r.join(',');}
 // console.log(show(s));

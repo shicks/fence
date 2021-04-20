@@ -43,88 +43,55 @@ export class Slitherlink {
     return new Slitherlink(this.grid, uf, this.constraints, this.cellMap);
   }
 
-  // NOTE: this is done automatically by rangeCheck
-  zeros(): Slitherlink {
-    let uf = this.uf;
-    for (const [i, count] of this.constraints) {
-      if (count) continue;
-      const c = this.grid.cells[i];
-      for (const h of c.incident) {
-        uf = uf.union(c.index, h.twin.cell.index);
-      }
-    }
-    return this.update(uf);
+  isDeadEnd(cell: Cell): boolean {
+    return this.constraints.get(cell.index) === cell.incident.length - 1;
   }
 
-  rangeCheck1(): Slitherlink {
-    let uf = this.uf;
-    for (const [i, count] of this.constraints) {
-      const cell = this.grid.cells[i];
-      const [min, max] = this.range(cell);
-      if (min === max) continue;
-      let f: ((x: number) => number) | undefined = undefined;
-      if (min === count) f = x => x;
-      if (max === count) f = x => ~x;
-      if (!f) continue;
-      const color = pos(uf.find(i));
-      // all the remaining edges are x's
-      for (const h of cell.incident) {
-        if (pos(uf.find(h.twin.cell.index)) === color) continue;
-try{
-        uf = uf.union(h.twin.cell.index, f(i));
-}catch(err){
-console.error(`${cell.y},${cell.x}: count=${count}, min=${min}, max=${max} => ${h.twin.cell.y},${h.twin.cell.x}`);
-throw err;
-}
-        if ((this as any).EXPECT_FROZEN && uf !== this.uf){const uf1=String(this.uf);const uf2=String(uf); throw new Error(`mutated on ${h.twin.cell.index}, ${f(i)}\n${uf1}\n  => [${uf1 === uf2}]  \n${uf2}`);}
-      }
-    }
-    return this.update(uf);
-  }
-
-  // variation on rangeCheck that doesn't need to know current cell
-  // at all, and could possibly infer current cell from neighbors?
-  //  - TODO - can we generalize rangeCheck out of this?
-  rangeCheck2(): Slitherlink {
-    let uf = this.uf;
-    OUTER:
-    for (const [i, count] of this.constraints) {
-      const cell = this.grid.cells[i];
-      const neighbors = new Map<number, [number, number]>();
-      const cellColor = pos(uf.find(cell.index));
-      let eligible = false;
-      for (const h of cell.incident) {
-        const color = uf.find(h.twin.cell.index);
-        const pcolor = pos(color);
-        if (cellColor === pos(color)) continue OUTER;
-        if (neighbors.has(pcolor)) {
-          eligible = true;
-        } else {
-          neighbors.set(pcolor, [0, 0]);
+  // TODO - handle N-1 cells
+  //  - edge with two 3's around it has only possible xs on the wings
+  //  - vertex with two 3's around it has all non-incident edges x'd out
+  //    and lines on all the non-incoming edges of the 3-cells
+  // Is there a good way to derive this from first principles???
+  handleSpecialCases(): Slitherlink {
+    // Non-inner loop - just run it once at the start...
+    let s: Slitherlink = this;
+    for (const edge of this.grid.edges) {
+      if (edge.halfedges.every(h => this.isDeadEnd(h.cell))) {
+        const unknown = new Set<Halfedge>();
+        unknown.add(edge.halfedges[0].prev);
+        unknown.add(edge.halfedges[0].next);
+        unknown.add(edge.halfedges[1].prev);
+        unknown.add(edge.halfedges[1].next);
+        for (const h of edge.halfedges) {
+          for (const i of h.cell.incident) {
+            if (!unknown.has(i)) s = s.setEdgeType(i, true);
+          }
         }
-        neighbors.get(pcolor)![color < 0 ? 0 : 1]++;
-      }
-      if (!eligible) continue;
-      // at this point we know one neighbor color is duplicated
-      // see if we break the range assumption by making the central
-      // cell one or the other.  also see if we can set the non-duplicated
-      // ones as the same or opposite each other, or something else relative
-      // to the duplicated ones.  What if 5 neighbors, a a b b c?
-
-      const [min, max] = this.range(cell);
-      if (min === max) continue;
-      let f: ((x: number) => number) | undefined = undefined;
-      if (min === count) f = x => x;
-      if (max === count) f = x => ~x;
-      if (!f) continue;
-      const color = pos(uf.find(i));
-      // all the remaining edges are x's
-      for (const h of cell.incident) {
-        if (pos(uf.find(h.twin.cell.index)) === color) continue;
-        uf = uf.union(h.twin.cell.index, f(i));
       }
     }
-    return this.update(uf);
+    for (const vert of this.grid.vertices) {
+      if (new Set([...vert.incoming, ...vert.incoming.map(h => h.twin)]
+          .flatMap(h => this.isDeadEnd(h.cell) ? [h.edge] : [])).size === 4) {
+        const unknown = new Set<Halfedge>();
+        for (const i of vert.incoming) {
+          if (this.constraints.get(i.cell.index) === i.cell.incident.length - 1) {
+            for (const h of i.cell.incident) {
+              if (h.vert === vert) {
+                unknown.add(h);
+              } else if (h.twin.vert === vert) {
+                unknown.add(h.twin);
+              } else {
+                s = s.setEdgeType(h, true);
+              }
+            }
+          }
+        }
+        for (const i of vert.incoming) {
+          if (!unknown.has(i)) s = s.setEdgeType(i, false);
+        }
+      }
+    }
+    return s;
   }
 
   rangeCheck(): Slitherlink {
@@ -159,7 +126,6 @@ throw err;
     });
     if (count && bitIndex.size === cell.incident.length + 1) return uf; // nothing to do
     // Otherwise, try all combinations and see what sticks
-console.log(`Cell ${cell.y},${cell.x} (${count}): colors=${colors.join(',')} neighbors=${neighbors.join(',')}`);
     const ok =
         Array.from({length: 1 << bitIndex.size - 1}, (_, i) => i).filter(i => {
           i <<= 1; // WLOG the zero bit can always be unset
@@ -167,10 +133,8 @@ console.log(`Cell ${cell.y},${cell.x} (${count}): colors=${colors.join(',')} nei
           for (const n of neighbors) {
             walls += (n < 0 ? (~i >>> ~n) & 1 : (i >>> n) & 1);
           }
-console.log(`  ${i.toString(2).padStart(colors.length,'0')}: ${walls}`);
           return walls === count;
         });
-console.log(`  OK:           ${ok.map(i=>i.toString(2).padStart(colors.length-1,'0')+'0').join(',')}`);
     // Find bits or PAIRS of bits that are always FALSE.
     // Say we have bits 0, 1, 2
     // Then we have 4 results.  Consider the following examples:
@@ -192,22 +156,16 @@ console.log(`  OK:           ${ok.map(i=>i.toString(2).padStart(colors.length-1,
     // same as colors[0].  Then for each bit index b, we map the `ok` array
     // with (x => (x & (1 << b) ? x : ~x) >> (b + 1)) and the opposite
     // (? ~x : x) and OR these together as well.
-    const all = (1 << (colors.length - 1)) - 1;
     for (let b = 0; b < colors.length - 1; b++) {
       for (let s = 0; s < 2; s++) {
         let mask = 0;
-const terms = [];
         for (const i of ok) {
           const flipped = b && (i & (1 << (b - 1))) ? i : ~i;
-terms.push(((s ? flipped : ~flipped) & all));
-          mask |= ((s ? flipped : ~flipped) /*& all*/) >>> b;
+          mask |= ((s ? flipped : ~flipped)) >>> b;
         }
-console.log(`  bit ${b} sign ${s}: ${terms.map(x=>x.toString(2).padStart(colors.length-1,'0')+'0').join(',')} => ${((mask&(all>>>b))).toString(2).padStart(colors.length-1-b,'0')}`);
         // any zero bits correspond to facts!
         for (let b2 = b + 1; b2 < colors.length; b2++) {
           if (!(mask & 1)) {
-//            console.log(`Cell ${cell.y},${cell.x} (${count}): colors=${colors.join(',')} neighbors=${neighbors.join(',')} ok=${ok.map(x => x.toString(2).padStart(colors.length-1,'0')+'0').join(',')} union ${b} ${s?'':'~'}${b2}`);
-            console.log(`    => union ${b}(${colors[b]}) ${s?'~':''}${b2}(${s?~colors[b2]:colors[b2]})`);
             uf = uf.union(colors[b], s ? ~colors[b2] : colors[b2]);
             break; // if there's another one, it'll get picked up next iteration
           }
@@ -215,9 +173,6 @@ console.log(`  bit ${b} sign ${s}: ${terms.map(x=>x.toString(2).padStart(colors.
         }
       }
     }
-
-console.log(`${show(this.update(uf))}\n${uf}\n`);
-
     return uf;
   }
 
@@ -260,9 +215,14 @@ console.log(`${show(this.update(uf))}\n${uf}\n`);
     return c1 === c2 ? false : c1 === ~c2 ? true : undefined;
   }
   setEdgeType(h: Halfedge, wall: boolean): Slitherlink {
+try{
     return this.update(this.uf.union(
       h.cell.index,
       wall ? ~h.twin.cell.index : h.twin.cell.index));
+}catch(err){
+console.log(show(this));
+throw err;
+}
   }
 
   // returns the (inclusive) range of possible edge numbers given neighbors
