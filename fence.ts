@@ -14,37 +14,78 @@ type SlitherlinkConstraint = readonly [
   x: number,
   count: number,
 ];
+type MasyuConstraint = readonly [
+  y: number,
+  x: number,
+  filled?: boolean,
+];
+type CorralConstraint = readonly [
+  y: number,
+  x: number,
+  value: number|boolean, // number=enclosure, T=inside/cow, F=outside/cactus
+];
+interface Constraints {
+  slitherlink?: readonly SlitherlinkConstraint[];
+  masyu?: readonly MasyuConstraint[];
+  corral?: readonly CorralConstraint[];
+}
 
-export class Slitherlink {
+interface InternalConstraint {
+  readonly slitherlink: ReadonlyMap<number, number>;
+  readonly masyu: ReadonlyMap<number, boolean>;
+  readonly enclosure: ReadonlyMap<number, number>;
+  readonly initial: ReadonlyMap<number, boolean>;
+}
+  
+export class Fence {
   constructor(
     readonly grid: Grid,
     readonly uf: PersistentBinaryUnionFind,
-    readonly constraints: ReadonlyMap<number, number>,
-    private readonly cellMap: ReadonlyMap<number, number>) {}
+    readonly c: InternalConstraint) {}
 
-  static create(h: number, w: number, ...constraints: SlitherlinkConstraint[]): Slitherlink {
+  static create(h: number, w: number, constraints: Constraints = {}): Fence {
     const grid = new Grid(h, w);
     const cellMap = new Map<number, number>();
     for (const cell of grid.cells) {
       cellMap.set(cell.y << 16 | cell.x, cell.index);
     }
+    const vertMap = new Map<number, number>();
+    for (const vert of grid.vertices) {
+      vertMap.set(vert.y << 16 | vert.x, vert.index);
+    }
 
-    const uf = PersistentBinaryUnionFind.create(grid.cells.length);
-
-    const constraintMap =
-        new Map(constraints.map(
-            ([y, x, count]) => [assert(cellMap.get(y << 16 | x)), count]));
-    return new Slitherlink(grid, uf, constraintMap, cellMap);
+    let uf = PersistentBinaryUnionFind.create(grid.cells.length);
+    const c = {
+      slitherlink: new Map<number, number>(),
+      masyu: new Map<number, boolean>(),
+      enclosure: new Map<number, number>(),
+      initial: new Map<number, boolean>(),
+    };
+    for (const [y, x, count] of constraints.slitherlink || []) {
+      c.slitherlink.set(assert(cellMap.get(y << 16 | x)), count);
+    }
+    for (const [y, x, filled = false] of constraints.masyu || []) {
+      c.masyu.set(assert(vertMap.get(y << 16 | x)), filled);
+    }
+    for (const [y, x, value] of constraints.corral || []) {
+      const index = assert(cellMap.get(y << 16 | x));
+      if (typeof value === 'number') {
+        c.enclosure.set(index, value);
+      } else {
+        c.initial.set(index, value);
+      }
+    }
+    return new Fence(grid, uf, c);
   }
 
   private update(uf: PersistentBinaryUnionFind) {
     if (uf === this.uf) return this;
     if ((this as any).EXPECT_FROZEN) throw new Error();
-    return new Slitherlink(this.grid, uf, this.constraints, this.cellMap);
+    return new Fence(this.grid, uf, this.c);
   }
 
   isDeadEnd(cell: Cell): boolean {
-    return this.constraints.get(cell.index) === cell.incident.length - 1;
+    return this.c.slitherlink.get(cell.index) === cell.incident.length - 1;
   }
 
   // TODO - handle N-1 cells
@@ -52,9 +93,26 @@ export class Slitherlink {
   //  - vertex with two 3's around it has all non-incident edges x'd out
   //    and lines on all the non-incoming edges of the 3-cells
   // Is there a good way to derive this from first principles???
-  handleSpecialCases(): Slitherlink {
+  handleInitialCases(): Fence {
     // Non-inner loop - just run it once at the start...
-    let s: Slitherlink = this;
+    let s: Fence = this;
+    for (const [index, value] of [...this.c.initial, ...this.c.enclosure]) {
+      s = s.update(s.uf.union(index, value ? ~0 : 0));
+    }
+    for (const [index, filled] of this.c.masyu) {
+      if (filled) continue;
+      // open circles have different-colored diagonals
+      const v = s.grid.vertices[index];
+      const cells = [];
+      for (const h of v.incoming) {
+        for (let i = h.cell.outside ? 5 - v.incoming.length : 1; i > 0; i--) {
+          cells.push(h.cell);
+        }
+      }
+      if (cells.length !== 4) throw new Error(`Bad masyu geometry: ${cells.length}`);
+      s = s.update(s.uf.union(cells[0].index, ~cells[2].index)
+                       .union(cells[1].index, ~cells[3].index));
+    }
     for (const edge of this.grid.edges) {
       if (edge.halfedges.every(h => this.isDeadEnd(h.cell))) {
         const unknown = new Set<Halfedge>();
@@ -74,7 +132,7 @@ export class Slitherlink {
           .flatMap(h => this.isDeadEnd(h.cell) ? [h.edge] : [])).size === 4) {
         const unknown = new Set<Halfedge>();
         for (const i of vert.incoming) {
-          if (this.constraints.get(i.cell.index) === i.cell.incident.length - 1) {
+          if (this.c.slitherlink.get(i.cell.index) === i.cell.incident.length - 1) {
             for (const h of i.cell.incident) {
               if (h.vert === vert) {
                 unknown.add(h);
@@ -94,9 +152,17 @@ export class Slitherlink {
     return s;
   }
 
-  rangeCheck(): Slitherlink {
+  iterate(): Fence {
+    let f: Fence = this;
+    f = f.masyuCheck();
+    f = f.rangeCheck();
+    f = f.vertexCheck();
+    return f;
+  }
+
+  rangeCheck(): Fence {
     let uf = this.uf;
-    for (const [i, count] of this.constraints) {
+    for (const [i, count] of this.c.slitherlink) {
       uf = this.rangeCheckCell(this.grid.cells[i], count, uf);
     }
     return this.update(uf);
@@ -176,13 +242,13 @@ export class Slitherlink {
     return uf;
   }
 
-  vertexCheck(): Slitherlink {
-    let s: Slitherlink = this;
+  vertexCheck(): Fence {
+    let s: Fence = this;
     for (const v of this.grid.vertices) {
       let walls = 0;
       let unknowns = [];
       for (const h of v.incoming) {
-        const e = this.edgeType(h);
+        const e = s.edgeType(h);
         if (e === true) walls++;
         if (e == undefined) unknowns.push(h);
       }
@@ -201,6 +267,78 @@ export class Slitherlink {
     return s;
   }
 
+  masyuCheck(): Fence {
+    let s: Fence = this;
+    function isX(h: Halfedge|undefined): boolean {
+      return h ? s.edgeType(h) === false : true;
+    }
+    function isLine(h: Halfedge|undefined): boolean {
+      return !!(h && s.edgeType(h));
+    }
+    for (const [i, filled] of this.c.masyu) {
+      const v = this.grid.vertices[i];
+      // NOTE: do very different things based on filled...
+      // NOTE: handling edges is a little awk
+      const dirs: Halfedge[][] = [];
+      for (const h of v.incoming) {
+        const dir = [h];
+        dirs.push(dir);
+        let h2 = h.twin; // h2 points to neighbor vertex: walk around it
+        let turns = 2;
+        while (turns > 0) {
+          turns -= h2.cell.outside ? 5 - h2.vert.incoming.length : 1;
+          h2 = h2.next.twin;
+        }
+        if (turns === 0) {
+          dir.push(h2);
+        }
+        if (h.cell.outside) {
+          for (let i = v.incoming.length; i < 4; i++) {
+            dirs.push([]);
+          }
+        }
+      }
+      if (dirs.length !== 4) throw new Error(`Bad masyu geometry: ${dirs.length}`);
+
+      if (filled) {
+        // 1. If there is an edge coming in already, then mark the
+        //    opposite edge as an 'x'
+        // 2. If there is an 'x' in either of the next two neighbors
+        //    then the opposite two must be lines
+        for (let i = 0; i < 4; i++) {
+          const dir = dirs[i];
+          if (dir.length < 2 || dir.some(isX)) {
+            s = s.setEdgeType(dirs[i ^ 2][0], true)
+                 .setEdgeType(dirs[i ^ 2][1], true);
+          } else if (isLine(dir[0])) {
+            s = s.setEdgeType(dir[1], true);
+            if (dirs[i ^ 2].length) s = s.setEdgeType(dirs[i ^ 2][0], false);
+          }
+        }
+      } else {
+        // The basic "straight through" requirement is enforced by the
+        // initial constraint that diagonal cells are opposite.  But we
+        // must still enforce that one side has an 'x' as a second neighbor.
+        for (let i = 0; i < 4; i++) {
+          // Two parallel incoming 2nd edges.
+          if (isLine(dirs[i][1]) && isLine(dirs[i ^ 2][1])) {
+            s = s.setEdgeType(dirs[i][0], false);
+          }
+            //[i] && xs2[i ^ 2]) s = s.setEdgeType(dirs[i ^ 1][0], true);
+          if (isLine(dirs[i][0]) && isLine(dirs[i][1])) {
+            s = s.setEdgeType(dirs[i ^ 2][1], false);
+          }
+        }
+      }
+    }
+
+    // TODO - lines off to the side of a black circle are no good,
+    //        but currently don't show up anywhere
+    // TODO - how to turn 3+ open circles in a row into a pattern?
+
+    return s;
+  }
+
   // TODO - if a 1 has two same-neighbors then we know its color
   // similarly, if a 3 has two same-neighbors (incl edge)
   // if a 2 has two known neighbors, we know something about the others
@@ -214,7 +352,7 @@ export class Slitherlink {
     const c2 = this.uf.find(h.twin.cell.index);
     return c1 === c2 ? false : c1 === ~c2 ? true : undefined;
   }
-  setEdgeType(h: Halfedge, wall: boolean): Slitherlink {
+  setEdgeType(h: Halfedge, wall: boolean): Fence {
 try{
     return this.update(this.uf.union(
       h.cell.index,

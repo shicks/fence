@@ -152,7 +152,7 @@ export class Grid {
     }
     // Link up all the internals
     for (let y = 0; y < height; y++) {
-      for (let x = 0; x < height; x++) {
+      for (let x = 0; x < width; x++) {
         const l = get(hs, y, x, 0xc0);
         const b = get(hs, y + 1, x, 0x0c);
         const r = get(hs, y, x + 1, 0x40);
@@ -174,6 +174,8 @@ export class Grid {
     seq(get(hs, 0, width - 1, 0x0c), get(hs, 0, width, 0xc0));
     seq(get(hs, height - 1, width, 0xc0), get(hs, height, width - 1, 0x04));
     seq(get(hs, height, 0, 0x04), get(hs, height - 1, 0, 0x40));
+
+for(const [id,h] of hs)if(!h.next)console.dir([id.toString(16),h]);
 
     // Second pass: connect cells and vertices.
     for (const c of cs.values()) {
