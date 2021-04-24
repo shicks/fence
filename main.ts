@@ -61,7 +61,13 @@ let s3 = Fence.create(7, 7, {
           [6, 4],
           [6, 5]]});
 
-let s3a = Fence.create(15, 13, {
+function masyu(height: number, str: string): Fence {
+  const width = str.length / height;
+  const enumerated: [string, number, number][] = [...str].map((c, i) => [c, Math.floor(i / width), i % width]);
+  return Fence.create(height - 1, width - 1, {masyu: enumerated.flatMap(([c, y, x]) => c === '_' ? [] : [[y, x, c === '@']])});
+}
+
+let s3a = Fence.create(14, 12, {
   masyu: [[0, 1],
           [0, 3],
           [0, 6],
@@ -117,6 +123,8 @@ let s3a = Fence.create(15, 13, {
           [14, 2, true],
           [14, 4, true],
           [14, 10, true]]});
+
+s3a = masyu(15, '_O___@___O_O____OO_____O__O______OO______OO___O_O__________OO___@_____@_O_____@_O________O_@_O__O_O_O_O___O__O_O_O_________@_O___@_O___OO_O_____O_OO___O___O_O__@___OO____O_O______________O_O___@_');
 
 let [] = [s1, s2, s3, s3a];
 let s = s3a;
