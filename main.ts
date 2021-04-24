@@ -41,14 +41,9 @@ let s2 = Fence.create(7, 7, {
                 [5, 5, 2],
                 [6, 0, 3],
                 [6, 2, 2],
-                [6, 5, 3]],
-  masyu: [[2, 2, true],
-          [3, 2, false]],
-  corral: [[2, 4, 6],
-           [5, 3, false],
-           [5, 1, true]]});
+                [6, 5, 3]]});
 
-s2 = Fence.create(7, 7, {
+let s3 = Fence.create(7, 7, {
   masyu: [[1, 1],
           [1, 3],
           [2, 2],
@@ -66,7 +61,8 @@ s2 = Fence.create(7, 7, {
           [6, 4],
           [6, 5]]});
 
-let [s] = [s2, s1, s2];
+let [] = [s1, s2, s3];
+let s = s3;
 
 let s0!: Fence;
 let i = 0;

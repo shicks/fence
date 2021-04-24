@@ -99,9 +99,9 @@ export class Fence {
     for (const [index, value] of [...this.c.initial, ...this.c.enclosure]) {
       s = s.update(s.uf.union(index, value ? ~0 : 0));
     }
+    // Open circles have opposite-colored diagonals
     for (const [index, filled] of this.c.masyu) {
       if (filled) continue;
-      // open circles have different-colored diagonals
       const v = s.grid.vertices[index];
       const cells = [];
       for (const h of v.incoming) {
@@ -113,6 +113,7 @@ export class Fence {
       s = s.update(s.uf.union(cells[0].index, ~cells[2].index)
                        .union(cells[1].index, ~cells[3].index));
     }
+    // Dead ends that share an edge get walls on all but adjacent to shared edge
     for (const edge of this.grid.edges) {
       if (edge.halfedges.every(h => this.isDeadEnd(h.cell))) {
         const unknown = new Set<Halfedge>();
@@ -127,6 +128,9 @@ export class Fence {
         }
       }
     }
+    // Dead ends that share a vertex get xs on all other edges that don't
+    // share the dead-end cells (irrelevant for rectangular lattice) and
+    // walls on the other two edges of the dead ends.
     for (const vert of this.grid.vertices) {
       if (new Set([...vert.incoming, ...vert.incoming.map(h => h.twin)]
           .flatMap(h => this.isDeadEnd(h.cell) ? [h.edge] : [])).size === 4) {
@@ -321,10 +325,12 @@ export class Fence {
         // must still enforce that one side has an 'x' as a second neighbor.
         for (let i = 0; i < 4; i++) {
           // Two parallel incoming 2nd edges.
-          if (isLine(dirs[i][1]) && isLine(dirs[i ^ 2][1])) {
+          if ((isLine(dirs[i][1]) ||
+                 s.c.masyu.get(dirs[i][1]?.vert.index) === false) &&
+              (isLine(dirs[i ^ 2][1]) ||
+                 s.c.masyu.get(dirs[i ^ 2][1]?.vert.index) === false)) {
             s = s.setEdgeType(dirs[i][0], false);
           }
-            //[i] && xs2[i ^ 2]) s = s.setEdgeType(dirs[i ^ 1][0], true);
           if (isLine(dirs[i][0]) && isLine(dirs[i][1])) {
             s = s.setEdgeType(dirs[i ^ 2][1], false);
           }
