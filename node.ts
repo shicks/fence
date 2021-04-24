@@ -1,5 +1,6 @@
 import { Edge, Vertex, Cell, Grid} from './grid.js';
 import {Fence} from './fence.js';
+import { SortedMultiset } from './sortedmultiset.js';
 
 type Elt = Edge|Vertex|Cell;
 
@@ -63,7 +64,7 @@ export function show(f: Fence,
                      sc: (c: Cell, f: Fence) => unknown = showCell,
                      sv: (v: Vertex, f: Fence) => unknown = showVert): string {
   // Figure out relevant colors to show
-  const colorSet = new Multiset<number>();
+  const colorSet = new SortedMultiset<number>();
   for (const cell of f.grid.cells) {
     colorSet.add(pos(f.uf.find(cell.index)));
   }
@@ -89,7 +90,7 @@ export function show(f: Fence,
       if (c1 === c2) {
         let col = colorMap.get(pos(c1));
         if (col && c1 < 0) col = (col * 0x101) >> 4 & 0xff;
-        const txt = horiz ? '   ' : ' ';
+        const txt = horiz ? ' × ' : '×';
         const esc = col ? `\x1b[38;5;${col & 0xf};48;5;${col >> 4}m` : '';
         return `${esc}${txt}${col ? '\x1b[m' : ''}`;
       }
@@ -100,14 +101,4 @@ export function show(f: Fence,
 
 function pos(x: number) {
   return x < 0 ? ~x : x;
-}
-
-class Multiset<T> {
-  private readonly data = new Map<T, number>();
-  add(elem: T) {
-    this.data.set(elem, (this.data.get(elem) || 0) + 1);
-  }
-  [Symbol.iterator]() {
-    return [...this.data].sort(([, a], [, b]) => b - a)[Symbol.iterator]();
-  }
 }

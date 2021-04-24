@@ -61,17 +61,76 @@ let s3 = Fence.create(7, 7, {
           [6, 4],
           [6, 5]]});
 
-let [] = [s1, s2, s3];
-let s = s3;
+let s3a = Fence.create(15, 13, {
+  masyu: [[0, 1],
+          [0, 3],
+          [0, 6],
+          [0, 11],
+          [1, 2],
+          [1, 6],
+          [1, 11],
+          [2, 1],
+          [2, 6],
+          [2, 8],
+          [2, 11],
+          [3, 1],
+          [3, 4],
+          [3, 6],
+          [3, 8],
+          [4, 1],
+          [4, 2],
+          [4, 7],
+          [4, 11],
+          [5, 8],
+          [5, 11],
+          [6, 1],
+          [6, 3],
+          [6, 6],
+          [6, 11],
+          [7, 2],
+          [7, 5],
+          [7, 7],
+          [7, 10],
+          [8, 1],
+          [8, 2],
+          [8, 7],
+          [8, 10],
+          [9, 1],
+          [9, 4],
+          [9, 6],
+          [9, 7],
+          [9, 10],
+          [10, 1],
+          [10, 2],
+          [10, 4],
+          [10, 9],
+          [11, 1, true],
+          [11, 6],
+          [11, 7],
+          [11, 8],
+          [11, 9],
+          [12, 11],
+          [13, 0],
+          [13, 6],
+          [13, 8, true],
+          [13, 12],
+          [14, 2, true],
+          [14, 4, true],
+          [14, 10, true]]});
+
+let [] = [s1, s2, s3, s3a];
+let s = s3a;
 
 let s0!: Fence;
 let i = 0;
 s = s.handleInitialCases();
 while (s !== s0) {
   s0 = s;
-  s = s.iterate();
+  s = s.iterateToFixedPoint();
   console.log(show(s), '\n');
-  if (i++ > 20) break;
+  s = s.slowCheck();
+  console.log(show(s), '\n');
+  if (i++ > 100) break;
 }
 //(PersistentBinaryUnionFind as any).EXPECT_FROZEN = true;
 //(s as any).EXPECT_FROZEN = true;

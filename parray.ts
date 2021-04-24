@@ -34,7 +34,7 @@ export class PArray<T> {
   }
 
   // Ensures `this.data` is an array.
-  private reroot(): void {
+  private rerootRec(): void {
     const data = this.data as Diff<T>;
     if (!data.parent) return;
     data.parent.reroot();
@@ -45,6 +45,27 @@ export class PArray<T> {
       value: this.data[data.index],
     };
     this.data[data.index] = data.value;
+  }
+
+  // Ensures `this.data` is an array.
+  private reroot(): void {
+    const stack: PArray<T>[] = [];
+    let arr: PArray<T> = this;
+    while ((arr.data as Diff<T>).parent) {
+      stack.push(arr);
+      arr = (arr.data as Diff<T>).parent;
+    }
+    while (stack.length) {
+      arr = stack.pop()!;
+      const data = arr.data as Diff<T>;
+      arr.data = data.parent.data as T[];
+      data.parent.data = {
+        parent: arr,
+        index: data.index,
+        value: arr.data[data.index],
+      };
+      arr.data[data.index] = data.value;
+    }
   }
 
   get(index: number): T {

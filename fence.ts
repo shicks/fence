@@ -3,6 +3,8 @@
 import {PersistentBinaryUnionFind} from './pbuf.js';
 import {Cell, Grid, Halfedge} from './grid.js';
 import {show} from './node.js';
+import { PersistentUnionFind } from './puf.js';
+import { SortedMultiset } from './sortedmultiset.js';
 
 function assert<T>(arg: T): NonNullable<T> {
   if (arg == null) throw new Error(`Expected non-null: ${arg}`);
@@ -164,6 +166,16 @@ export class Fence {
     return f;
   }
 
+  iterateToFixedPoint(): Fence {
+    let f: Fence = this;
+    let f0!: Fence;
+    while (f !== f0) {
+      f0 = f;
+      f = f.iterate();
+    }
+    return f;
+  }
+
   rangeCheck(): Fence {
     let uf = this.uf;
     for (const [i, count] of this.c.slitherlink) {
@@ -307,11 +319,16 @@ export class Fence {
       if (filled) {
         // 1. If there is an edge coming in already, then mark the
         //    opposite edge as an 'x'
-        // 2. If there is an 'x' in either of the next two neighbors
+        // 2. If there is an 'x' in either of the next two neighbors,
+        //    or if there's an incoming perpendicular edge between them,
         //    then the opposite two must be lines
+        // (TODO - can we figure the incoming perpendicular bit out more
+        // naturally somehow?)
         for (let i = 0; i < 4; i++) {
           const dir = dirs[i];
-          if (dir.length < 2 || dir.some(isX)) {
+          const direct = new Set(dir.map(h => h.edge));
+          const sides = dir[1]?.vert.incoming.filter(h => !direct.has(h.edge));
+          if (dir.length < 2 || dir.some(isX) || sides.some(isLine)) {
             s = s.setEdgeType(dirs[i ^ 2][0], true)
                  .setEdgeType(dirs[i ^ 2][1], true);
           } else if (isLine(dir[0])) {
@@ -331,18 +348,171 @@ export class Fence {
                  s.c.masyu.get(dirs[i ^ 2][1]?.vert.index) === false)) {
             s = s.setEdgeType(dirs[i][0], false);
           }
-          if (isLine(dirs[i][0]) && isLine(dirs[i][1])) {
+          if (isLine(dirs[i][0]) && isLine(dirs[i][1]) && dirs[i ^ 2][1]) {
             s = s.setEdgeType(dirs[i ^ 2][1], false);
           }
         }
       }
     }
-
-    // TODO - lines off to the side of a black circle are no good,
-    //        but currently don't show up anywhere
-    // TODO - how to turn 3+ open circles in a row into a pattern?
-
     return s;
+  }
+
+  connectedCheck(): Fence {
+    let s: Fence = this;
+    // TODO - how to figure this out.  Seems like we want to take all the
+    // colors and make domains, then build an adjacency graph of the domains.
+    // Then we look for any "choke points" where removing all domains of any
+    // two pairs of colors would disconnect the graph.  If any is found then
+    // these colors must be opposites.
+    // Can this analysis be done in parallel???  In particular, we'd like to
+    // avoid being quadratic in the number of colors.
+    // For now we'll just do it quadratically...
+    let domainsUf = PersistentUnionFind.create(this.grid.cells.length);
+    for (const e of this.grid.edges) {
+      const [a, b] = e.halfedges;
+      const ca = this.uf.find(a.cell.index);
+      const cb = this.uf.find(b.cell.index);
+      if (ca === cb) {
+        domainsUf = domainsUf.union(a.cell.index, b.cell.index);
+      }
+    }
+    const colors = new Map<number, number>();
+    const colorSet = new Set<number>();
+    const domainMap = new Map<number, number>();
+    for (const c of this.grid.cells) {
+      const cc = this.uf.find(c.index);
+      const domain = domainsUf.find(c.index);
+      if (!domainMap.has(domain)) domainMap.set(domain, domainMap.size);
+      colors.set(domain, cc);
+      colorSet.add(cc);
+    }
+    const graph = new Set<number>(); // elements are index1 << 16 | index2
+    for (const e of this.grid.edges) {
+      const [a, b] = e.halfedges;
+      const da = domainsUf.find(a.index);
+      const db = domainsUf.find(b.index);
+      if (da === ~db) continue; // these will never be connected...
+      if (da !== db) {
+        graph.add(da < db ? da << 16 | db : db << 16 | da);
+      }
+    }
+    // We now have a graph: now do a second UF based on domainsUf where
+    // we union all the edges except for two colors.
+    for (const ca of colorSet) {
+      for (const cb of colorSet) {
+        if (ca === cb || ca === ~cb) continue;
+        let connected = PersistentBinaryUnionFind.create(domainMap.size);
+        for (const edge of graph) {
+          const a = edge >>> 16;
+          const b = (edge & 0xffff);
+          if (colors.get(a) === ca || colors.get(b) === ca ||
+              colors.get(a) === cb || colors.get(a) === cb) {
+            continue; // skip these two...
+          }
+          connected = connected.union(a, b);
+        }
+        const components = new Set<number>();
+        for (let i = 0; i < domainMap.size; i++) {
+          components.add(connected.find(i));
+        }
+        if (components.size > 2) s = s.update(this.uf.union(ca, ~cb));
+      }
+    }
+
+    // TODO - this doesn't work... probably something really obvious
+    // but I'm too tired to spot.  Question: rather than domains, can
+    // we just use the existing PUF or PBUF to do this?
+
+    // For each color ca,
+    //   For each color cb,
+    //     Trial Union ca, cb
+    //       Check rules => if broken, Union ca, ~cb
+    //       Check connectedness with ca removed, ensure single
+    //     Trial Union ca, ~cb
+    //       Same as above...
+    
+    return s;
+  }
+
+  slowCheck(): Fence {
+    let s: Fence = this;
+//console.log(`slow checks\n${show(s)}\n`);
+    // TODO - how to figure this out.  Seems like we want to take all the
+    // colors and make domains, then build an adjacency graph of the domains.
+    // Then we look for any "choke points" where removing all domains of any
+    // two pairs of colors would disconnect the graph.  If any is found then
+    // these colors must be opposites.
+    // Can this analysis be done in parallel???  In particular, we'd like to
+    // avoid being quadratic in the number of colors.
+    // For now we'll just do it quadratically...
+    const colors = new SortedMultiset<number>();
+    for (const c of this.grid.cells) {
+      colors.add(pos(this.uf.find(c.index)));
+    }
+    for (const [a, ca] of colors) {
+      for (const [b, cb] of colors) {
+        if (a >= b) continue;
+        if (ca < 2 && cb < 2) continue;
+        for (const bb of [b, ~b]) {
+          let trial!: Fence;
+          try {
+            trial = s.update(s.uf.union(a, bb)).iterateToFixedPoint();
+            trial.checkRules();
+            let uf = PersistentUnionFind.create(this.grid.cells.length);
+            const removed = trial.uf.find(a);
+            const remaining = new Set<number>();
+            // TODO - not actually unioning correctly?
+            for (const e of this.grid.edges) {
+              const ok = e.halfedges.map(h => h.cell.index)
+                  .flatMap(i => trial.uf.find(i) === removed ? [] : [i]);
+              for (const i of ok) {
+                remaining.add(i);
+              }
+              if (ok.length === 2) uf = uf.union(ok[0], ok[1]);
+            }
+//console.log(`removed: ${removed}, remaining: ${[...remaining]}`);
+            const domains = new Set<number>();
+            for (const c of remaining) {
+              domains.add(uf.find(c));
+              if (domains.size > 1) throw new Error(`domains: ${[...domains]}`);
+            }
+          } catch (err) {
+            //console.log(`Found contradiction with ${a} ${bb}: ${err.message}\n${trial ? show(trial) : ''}\n`); 
+            s = s.update(s.uf.union(a, ~bb));
+            s.checkRules();
+            break;
+            // colors.delete(b); ???
+            //return s;
+          }
+        }
+      }
+    }
+    return s;
+  }
+
+  // Returns false if a rule/constraint is broken.
+  checkRules() {
+    // Look for overpopulated/impossible vertices
+    for (const v of this.grid.vertices) {
+      const counts: {[typ: string]: number} = {undefined: 0, true: 0, false: 0};
+      for (const h of v.incoming) {
+        counts[String(this.edgeType(h))]++;
+      }
+      if (counts.true > 2 || counts.true === 1 && !counts.undefined) {
+        throw new Error(`bad vertex ${v.y},${v.x}: ${counts.true} ${counts.undefined}`);
+      }
+    }
+    // Look for cells with bad slitherlink constraint
+    for (const [index, count] of this.c.slitherlink) {
+      const c = this.grid.cells[index];
+      const counts: {[typ: string]: number} = {undefined: 0, true: 0, false: 0};
+      for (const h of c.incident) {
+        counts[String(this.edgeType(h))]++;
+      }
+      if (count > counts.undefined + counts.true || count < counts.true) {
+        throw new Error(`bad cell ${c.y},${c.x} for ${count}: ${counts.true} ${counts.undefined}`);
+      }
+    }
   }
 
   // TODO - if a 1 has two same-neighbors then we know its color
@@ -358,6 +528,7 @@ export class Fence {
     const c2 = this.uf.find(h.twin.cell.index);
     return c1 === c2 ? false : c1 === ~c2 ? true : undefined;
   }
+
   setEdgeType(h: Halfedge, wall: boolean): Fence {
 try{
     return this.update(this.uf.union(
