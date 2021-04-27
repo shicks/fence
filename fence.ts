@@ -38,8 +38,14 @@ interface InternalConstraint {
   readonly enclosure: ReadonlyMap<number, number>;
   readonly initial: ReadonlyMap<number, boolean>;
 }
+
+
+function log(f: () => string) {
+  if (Fence.logging) console.log(f());
+}
   
 export class Fence {
+  static logging = true;
   constructor(
     readonly grid: Grid,
     readonly uf: PersistentBinaryUnionFind,
@@ -168,10 +174,15 @@ export class Fence {
 
   iterateToFixedPoint(): Fence {
     let f: Fence = this;
+    let iterations = 0;
     let f0!: Fence;
     while (f !== f0) {
       f0 = f;
       f = f.iterate();
+      if (++iterations > 10) {
+        console.log(`prev:\n${show(f0)}\nnext:\n${show(f)}`);
+        throw new Error('no convergence');
+      }
     }
     return f;
   }
@@ -434,6 +445,27 @@ export class Fence {
     return s;
   }
 
+  checkConnectedWithRemoval(remove: number): void {
+    remove = this.uf.find(remove);
+    let uf = PersistentUnionFind.create(this.grid.cells.length);
+    const remaining = new Set<number>();
+    // TODO - not actually unioning correctly?
+    for (const e of this.grid.edges) {
+      const ok = e.halfedges.map(h => h.cell.index)
+        .flatMap(i => this.uf.find(i) === remove ? [] : [i]);
+      for (const i of ok) {
+        remaining.add(i);
+      }
+      if (ok.length === 2) uf = uf.union(ok[0], ok[1]);
+    }
+    //console.log(`remove: ${remove}, remaining: ${[...remaining]}`);
+    const domains = new Set<number>();
+    for (const c of remaining) {
+      domains.add(uf.find(c));
+      if (domains.size > 1) throw new Error(`domains: ${[...domains]}`);
+    }
+  }
+
   slowCheck(): Fence {
     let s: Fence = this;
 //console.log(`slow checks\n${show(s)}\n`);
@@ -449,35 +481,22 @@ export class Fence {
     for (const c of this.grid.cells) {
       colors.add(pos(this.uf.find(c.index)));
     }
+    log(() => `Colors: {${[...colors].map(([x,c]) => `${x}: ${c}`).join(', ')}}\n${show(this)}\n`);
     for (const [a, ca] of colors) {
       for (const [b, cb] of colors) {
         if (a >= b) continue;
         if (ca < 2 && cb < 2) continue;
         for (const bb of [b, ~b]) {
+          log(() => `Check ${a} ${bb}`);
           let trial!: Fence;
           try {
             trial = s.update(s.uf.union(a, bb)).iterateToFixedPoint();
             trial.checkRules();
-            let uf = PersistentUnionFind.create(this.grid.cells.length);
-            const removed = trial.uf.find(a);
-            const remaining = new Set<number>();
-            // TODO - not actually unioning correctly?
-            for (const e of this.grid.edges) {
-              const ok = e.halfedges.map(h => h.cell.index)
-                  .flatMap(i => trial.uf.find(i) === removed ? [] : [i]);
-              for (const i of ok) {
-                remaining.add(i);
-              }
-              if (ok.length === 2) uf = uf.union(ok[0], ok[1]);
-            }
-//console.log(`removed: ${removed}, remaining: ${[...remaining]}`);
-            const domains = new Set<number>();
-            for (const c of remaining) {
-              domains.add(uf.find(c));
-              if (domains.size > 1) throw new Error(`domains: ${[...domains]}`);
-            }
+            trial.checkConnectedWithRemoval(a);
+            trial.checkConnectedWithRemoval(~a);
+            //log(() => show(trial));
           } catch (err) {
-            //console.log(`Found contradiction with ${a} ${bb}: ${err.message}\n${trial ? show(trial) : ''}\n`); 
+            //log(() => `Found contradiction with ${a} ${bb}: ${err.message}\n${trial ? show(trial) : ''}\n`); 
             s = s.update(s.uf.union(a, ~bb));
             s.checkRules();
             break;
@@ -530,14 +549,9 @@ export class Fence {
   }
 
   setEdgeType(h: Halfedge, wall: boolean): Fence {
-try{
     return this.update(this.uf.union(
       h.cell.index,
       wall ? ~h.twin.cell.index : h.twin.cell.index));
-}catch(err){
-console.log(show(this));
-throw err;
-}
   }
 
   // returns the (inclusive) range of possible edge numbers given neighbors

@@ -67,6 +67,12 @@ function masyu(height: number, str: string): Fence {
   return Fence.create(height - 1, width - 1, {masyu: enumerated.flatMap(([c, y, x]) => c === '_' ? [] : [[y, x, c === '@']])});
 }
 
+function slitherlink(height: number, str: string): Fence {
+  const width = str.length / height;
+  const enumerated: [string, number, number][] = [...str].map((c, i) => [c, Math.floor(i / width), i % width]);
+  return Fence.create(height, width, {slitherlink: enumerated.flatMap(([c, y, x]) => c === '.' ? [] : [[y, x, Number(c)]])});
+}
+
 let s3a = Fence.create(14, 12, {
   masyu: [[0, 1],
           [0, 3],
@@ -125,6 +131,9 @@ let s3a = Fence.create(14, 12, {
           [14, 10, true]]});
 
 s3a = masyu(15, '_O___@___O_O____OO_____O__O______OO______OO___O_O__________OO___@_____@_O_____@_O________O_@_O__O_O_O_O___O__O_O_O_________@_O___@_O___OO_O_____O_OO___O___O_O__@___OO____O_O______________O_O___@_');
+s3a = masyu(15, '___@__O_____@O___O_O_OOO___O_______O____@_@__OO_____O_________O_O____OO___O_______@___O___O_@______OO_____@___OO______O____O_OOO_O____O____________O__O___O_O_O__O_O___O________O_@_____@_@@____O__');
+
+s3a = slitherlink(20, '2....2.2.1.2.22.33....2.3...3.32....1.1212..223..2...22.32..1.2..2..22.......22.2..1...33....213.1..1..22...13....31.3...32.....2..32..10..33.3..21..3...3.23.2.2..2.2.1..1....2.1....2..22331..33..2...213..2...2.....3..32....3...11.2..0.1..3..3.232..32...2.2.2..3.2.2.232.3.....2.3.3...12..2.....123..2.2..21....33.2.3.02..3...3.2.2..2.2..2..1.....2..0.21.2......1.3121..232.3..2..3.21....22...22..32.');
 
 let [] = [s1, s2, s3, s3a];
 let s = s3a;
@@ -135,11 +144,11 @@ s = s.handleInitialCases();
 while (s !== s0) {
   s0 = s;
   s = s.iterateToFixedPoint();
-  console.log(show(s), '\n');
   s = s.slowCheck();
   console.log(show(s), '\n');
   if (i++ > 100) break;
 }
+
 //(PersistentBinaryUnionFind as any).EXPECT_FROZEN = true;
 //(s as any).EXPECT_FROZEN = true;
 //s.rangeCheck();
