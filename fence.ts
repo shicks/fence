@@ -167,6 +167,7 @@ export class Fence {
   iterate(): Fence {
     let f: Fence = this;
     f = f.masyuCheck();
+    f = f.enclosureCheck();
     f = f.rangeCheck();
     f = f.vertexCheck();
     return f;
@@ -228,6 +229,91 @@ export class Fence {
           }
           return walls === count;
         });
+    return this.processExhaustive(ok, colors, uf);
+  }
+
+  vertexCheck(): Fence {
+    let s: Fence = this;
+    for (const v of this.grid.vertices) {
+      let walls = 0;
+      let unknowns = [];
+      for (const h of v.incoming) {
+        const e = s.edgeType(h);
+        if (e === true) walls++;
+        if (e == undefined) unknowns.push(h);
+      }
+      let fill: boolean|undefined = undefined;
+      if (walls === 2) {
+        fill = false;
+      } else if (walls == 1 && unknowns.length === 1) {
+        fill = true;
+      }
+      if (fill != undefined) {
+        for (const h of unknowns) {
+          s = s.setEdgeType(h, fill);
+        }
+      }
+    }
+    return s;
+  }
+
+  enclosureCheck(): Fence {
+    let uf = this.uf;
+    for (const [i, count] of this.c.enclosure) {
+      uf = this.enclosureCheckCell(this.grid.cells[i], count, uf);
+    }
+    return this.update(uf);
+  }
+
+  enclosureCheckCell(cell: Cell, count: number, uf: PersistentBinaryUnionFind): PersistentBinaryUnionFind {
+    // Given a cell with an enclosure constraint, check its satisfiability.
+    // Similar to rangeCheckCell, we search all possible combinations of
+    // all cells down a line.
+    const bitIndex = new Map<number, number>([[0, 0]]); // maps colors to bits
+    const colors: number[] = [0];
+    const dirs: number[][] = cell.incident.map(h => {
+      const out: number[] = [];
+      h = h.twin;
+      for (;;) {
+        if (h.cell.outside) break;
+        const c = uf.find(h.cell.index);
+        if (c === 0) break;
+        const p = pos(c);
+        let bit = bitIndex.get(p);
+        if (bit == undefined) {
+          bitIndex.set(p, bit = bitIndex.size);
+          colors.push(p);
+        }
+        out.push(c < 0 ? ~bit : bit);
+        if (h.cell.incident.length !== 4) {
+          throw new Error(`Bad enclosure geometry: ${h.cell.incident.length}`);
+        }
+        h = h.next.next.twin;
+      }
+      return out;
+    });
+    if (colors.length === 1) return uf; // nothing to do
+    if (colors.length > 10) return uf; // punt: too much uncertainty
+    // Otherwise, try all combinations and see what sticks
+    const ok =
+        Array.from({length: 1 << bitIndex.size - 1}, (_, i) => i).filter(i => {
+          i <<= 1; // WLOG the zero bit is always unset
+          let enclosed = 1;
+          for (const d of dirs) {
+            for (const c of d) {
+              if (c < 0 ? (~i >>> ~c) & 1 : (i >>> c) & 1) {
+                enclosed++;
+              } else {
+                break;
+              }
+            }
+          }
+          return enclosed === count;
+        });
+    return this.processExhaustive(ok, colors, uf);
+  }
+
+  processExhaustive(ok: number[], colors: number[], uf: PersistentBinaryUnionFind): PersistentBinaryUnionFind {
     // Find bits or PAIRS of bits that are always FALSE.
     // Say we have bits 0, 1, 2
     // Then we have 4 results.  Consider the following examples:
@@ -267,31 +353,6 @@ export class Fence {
       }
     }
     return uf;
-  }
-
-  vertexCheck(): Fence {
-    let s: Fence = this;
-    for (const v of this.grid.vertices) {
-      let walls = 0;
-      let unknowns = [];
-      for (const h of v.incoming) {
-        const e = s.edgeType(h);
-        if (e === true) walls++;
-        if (e == undefined) unknowns.push(h);
-      }
-      let fill: boolean|undefined = undefined;
-      if (walls === 2) {
-        fill = false;
-      } else if (walls == 1 && unknowns.length === 1) {
-        fill = true;
-      }
-      if (fill != undefined) {
-        for (const h of unknowns) {
-          s = s.setEdgeType(h, fill);
-        }
-      }
-    }
-    return s;
   }
 
   masyuCheck(): Fence {
@@ -494,9 +555,9 @@ export class Fence {
             trial.checkRules();
             trial.checkConnectedWithRemoval(a);
             trial.checkConnectedWithRemoval(~a);
-            //log(() => show(trial));
+            log(() => show(trial));
           } catch (err) {
-            //log(() => `Found contradiction with ${a} ${bb}: ${err.message}\n${trial ? show(trial) : ''}\n`); 
+            log(() => `Found contradiction with ${a} ${bb}: ${err.message}\n${trial ? show(trial) : ''}\n`); 
             s = s.update(s.uf.union(a, ~bb));
             s.checkRules();
             break;
