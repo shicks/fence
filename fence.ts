@@ -86,7 +86,7 @@ export class Fence {
     return new Fence(grid, uf, c);
   }
 
-  private update(uf: PersistentBinaryUnionFind) {
+  update(uf: PersistentBinaryUnionFind): Fence {
     if (uf === this.uf) return this;
     if ((this as any).EXPECT_FROZEN) throw new Error();
     return new Fence(this.grid, uf, this.c);
@@ -161,6 +161,7 @@ export class Fence {
         }
       }
     }
+    log(() => `initial fill:\n${show(s)}\n`);
     return s;
   }
 
@@ -293,7 +294,7 @@ export class Fence {
       return out;
     });
     if (colors.length === 1) return uf; // nothing to do
-    if (colors.length > 10) return uf; // punt: too much uncertainty
+    if (colors.length > 25) return uf; // punt: too much uncertainty ???
     // Otherwise, try all combinations and see what sticks
     const ok =
         Array.from({length: 1 << bitIndex.size - 1}, (_, i) => i).filter(i => {
@@ -506,7 +507,8 @@ export class Fence {
     return s;
   }
 
-  checkConnectedWithRemoval(remove: number): void {
+  checkConnectedWithRemoval(remove: number, fix = false): Fence {
+    let s: Fence = this;
     remove = this.uf.find(remove);
     let uf = PersistentUnionFind.create(this.grid.cells.length);
     const remaining = new Set<number>();
@@ -520,50 +522,23 @@ export class Fence {
       if (ok.length === 2) uf = uf.union(ok[0], ok[1]);
     }
     //console.log(`remove: ${remove}, remaining: ${[...remaining]}`);
-    const domains = new Set<number>();
+    const domains = new Map<number, number[]>();
     for (const c of remaining) {
-      domains.add(uf.find(c));
-      if (domains.size > 1) throw new Error(`domains: ${[...domains]}`);
+      const cc = uf.find(c);
+      let mapped = domains.get(cc);
+      if (!mapped) domains.set(cc, mapped = []);
+      mapped.push(c);
+      if (domains.size > 1 && !fix) {
+        throw new Error(`domains: ${[...domains]} removing ${remove}`);
+      }
     }
-  }
-
-  slowCheck(): Fence {
-    let s: Fence = this;
-//console.log(`slow checks\n${show(s)}\n`);
-    // TODO - how to figure this out.  Seems like we want to take all the
-    // colors and make domains, then build an adjacency graph of the domains.
-    // Then we look for any "choke points" where removing all domains of any
-    // two pairs of colors would disconnect the graph.  If any is found then
-    // these colors must be opposites.
-    // Can this analysis be done in parallel???  In particular, we'd like to
-    // avoid being quadratic in the number of colors.
-    // For now we'll just do it quadratically...
-    const colors = new SortedMultiset<number>();
-    for (const c of this.grid.cells) {
-      colors.add(pos(this.uf.find(c.index)));
-    }
-    log(() => `Colors: {${[...colors].map(([x,c]) => `${x}: ${c}`).join(', ')}}\n${show(this)}\n`);
-    for (const [a, ca] of colors) {
-      for (const [b, cb] of colors) {
-        if (a >= b) continue;
-        if (ca < 2 && cb < 2) continue;
-        for (const bb of [b, ~b]) {
-          log(() => `Check ${a} ${bb}`);
-          let trial!: Fence;
-          try {
-            trial = s.update(s.uf.union(a, bb)).iterateToFixedPoint();
-            trial.checkRules();
-            trial.checkConnectedWithRemoval(a);
-            trial.checkConnectedWithRemoval(~a);
-            log(() => show(trial));
-          } catch (err) {
-            log(() => `Found contradiction with ${a} ${bb}: ${err.message}\n${trial ? show(trial) : ''}\n`); 
-            s = s.update(s.uf.union(a, ~bb));
-            s.checkRules();
-            break;
-            // colors.delete(b); ???
-            //return s;
-          }
+    if (fix && domains.size > 1) {
+      const best = [...domains.values()].reduce((best, s) => s.length > best.length ? s : best, []);
+      for (const d of domains.values()) {
+        if (d === best) continue;
+        //log(() => `Found a disconnected domain: ${d.join(', ')}`);
+        for (const c of d) {
+          s = s.update(s.uf.union(remove, c));
         }
       }
     }
@@ -610,9 +585,14 @@ export class Fence {
   }
 
   setEdgeType(h: Halfedge, wall: boolean): Fence {
+//try{    
     return this.update(this.uf.union(
       h.cell.index,
       wall ? ~h.twin.cell.index : h.twin.cell.index));
+//}catch(err){
+//console.log(show(this),'\n',h.id.toString(16),wall);
+//throw err;
+//}
   }
 
   // returns the (inclusive) range of possible edge numbers given neighbors
@@ -643,6 +623,82 @@ export class Fence {
   //   - possible option: given a cell, try various options (neighbors and
   //     their complement) and look for a contradiction?
 
+}
+
+export class Solver {
+  fence: Fence;
+  constructor(fence: Fence) {
+    this.fence = fence.handleInitialCases();
+  }
+
+  iterateToFixedPoint(): boolean { // true if progress was made
+    const init = this.fence;
+    this.fence = this.fence.iterateToFixedPoint();
+    return this.fence !== init;
+  }
+
+  slowChecks(): boolean {
+//console.log(`slow checks\n${show(s)}\n`);
+    // TODO - how to figure this out.  Seems like we want to take all the
+    // colors and make domains, then build an adjacency graph of the domains.
+    // Then we look for any "choke points" where removing all domains of any
+    // two pairs of colors would disconnect the graph.  If any is found then
+    // these colors must be opposites.
+    // Can this analysis be done in parallel???  In particular, we'd like to
+    // avoid being quadratic in the number of colors.
+    // For now we'll just do it quadratically...
+    const colors = new SortedMultiset<number>();
+    for (const c of this.fence.grid.cells) {
+      colors.add(pos(this.fence.uf.find(c.index)));
+    }
+    //log(() => `Colors: {${[...colors].map(([x,c]) => `${x}: ${c}`).join(', ')}}\n${show(this.fence)}\n`);
+    let progress = false;
+    // First look for any fully-surrounded cells: they need to be the same color
+    // as what's surrounding them.  If we don't do this upfront then arbitrary
+    // two-element removals will incorrectly look like contradictions when they
+    // were actually unrelated.
+    for (const c of colors) {
+      for (const cc of [c[0], ~c[0]]) {
+        const f = this.fence.checkConnectedWithRemoval(cc, true);
+        if (f !== this.fence) {
+          progress = true;
+          this.fence = f;
+          break;
+        }
+      }
+    }
+    // Now check for pairs of colors we can union to see if they lead to a
+    // contradiction.
+    const deleted = new Set<number>();
+    for (const [a, ca] of colors) {
+      if (deleted.has(a)) continue;
+      for (const [b, cb] of colors) {
+        if (a >= b) continue;
+        if (ca < 2 && cb < 2) continue;
+        for (const bb of [b, ~b]) {
+          //log(() => `Check ${a} ${bb}`);
+          let trial!: Fence;
+          try {
+            trial = this.fence.update(this.fence.uf.union(a, bb)).iterateToFixedPoint();
+            trial.checkRules();
+            trial.checkConnectedWithRemoval(a);
+            trial.checkConnectedWithRemoval(~a);
+            //log(() => show(trial));
+          } catch (err) {
+            //log(() => `Found contradiction with ${a} ${bb}: ${err.message}\n${trial ? show(trial) : ''}\n`); 
+            this.fence = this.fence.update(this.fence.uf.union(a, ~bb));
+            this.fence.checkRules();
+            progress = true;
+            //return true;
+            deleted.add(b);
+            //colors.deleteAll(b); //???
+            //return s;
+          }
+        }
+      }
+    }
+    return progress;
+  }
 }
 
 // This is a multiset where elements can go negative.
