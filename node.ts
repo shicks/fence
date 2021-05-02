@@ -8,6 +8,7 @@ type Elt = Edge|Vertex|Cell;
 // The upper colors are brighter: start with bright primary
 // colors paired with dim secondary colors
 const colors = [
+  0x3e,
   0x19, 0x2a, 0x3b, 0x4c, 0x5d, 0x6e,
   0x12, 0x34, 0x56,
   0x1e, 0x2b, 0x49, 0x5a, 0xab, 0xbc, 0x5e,
@@ -17,12 +18,12 @@ const colors = [
 export function showCell(c: Cell, f: Fence): unknown {
   if (f.c.slitherlink.has(c.index)) return f.c.slitherlink.get(c.index);
   if (f.c.enclosure.has(c.index)) return `${f.c.enclosure.get(c.index)}#`;
-  if (f.c.initial.has(c.index)) return f.c.initial.get(c.index) ? '@' : 'Ψ';
+  if (f.c.initial.has(c.index)) return f.c.initial.get(c.index) ? 'm' : 'Ψ';
   return '';
 }
 
 export function showVert(v: Vertex, f: Fence): unknown {
-  if (f.c.masyu.has(v.index)) return f.c.masyu.get(v.index) ? '*' : 'o';
+  if (f.c.masyu.has(v.index)) return f.c.masyu.get(v.index) ? '@' : 'o';
   return '+';
 }
 
