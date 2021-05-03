@@ -1,7 +1,7 @@
 // Basic structures....?
 
 import {PersistentBinaryUnionFind} from './pbuf.js';
-import {Cell, Grid, Halfedge} from './grid.js';
+import { Cell, Edge, Grid, Halfedge} from './grid.js';
 import {show} from './node.js';
 import { PersistentUnionFind } from './puf.js';
 import { SortedMultiset } from './sortedmultiset.js';
@@ -124,14 +124,21 @@ export class Fence {
     // Dead ends that share an edge get walls on all but adjacent to shared edge
     for (const edge of this.grid.edges) {
       if (edge.halfedges.every(h => this.isDeadEnd(h.cell))) {
-        const unknown = new Set<Halfedge>();
-        unknown.add(edge.halfedges[0].prev);
-        unknown.add(edge.halfedges[0].next);
-        unknown.add(edge.halfedges[1].prev);
-        unknown.add(edge.halfedges[1].next);
+        const unknown = new Set<Edge>();
+        unknown.add(edge.halfedges[0].prev.edge);
+        unknown.add(edge.halfedges[0].next.edge);
+        unknown.add(edge.halfedges[1].prev.edge);
+        unknown.add(edge.halfedges[1].next.edge);
         for (const h of edge.halfedges) {
           for (const i of h.cell.incident) {
-            if (!unknown.has(i)) s = s.setEdgeType(i, true);
+            if (!unknown.has(i.edge)) s = s.setEdgeType(i, true);
+          }
+          // Also note that any additional edges eminating from the two vertices
+          // (that are not on the dead-end cells) must be x'ed out.
+          for (const i of h.vert.incoming) {
+            if (!unknown.has(i.edge) && i.edge !== edge) {
+              s = s.setEdgeType(i, false);
+            }
           }
         }
       }
