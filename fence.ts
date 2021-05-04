@@ -31,6 +31,11 @@ interface Constraints {
   masyu?: readonly MasyuConstraint[];
   corral?: readonly CorralConstraint[];
 }
+interface MutableConstraints {
+  slitherlink?: SlitherlinkConstraint[];
+  masyu?: MasyuConstraint[];
+  corral?: CorralConstraint[];
+}
 
 interface InternalConstraint {
   readonly slitherlink: ReadonlyMap<number, number>;
@@ -630,6 +635,87 @@ export class Fence {
   //   - possible option: given a cell, try various options (neighbors and
   //     their complement) and look for a contradiction?
 
+  static random2(h: number, w: number): Fence {
+    let f = Fence.create(h, w);
+    // Attempt to fill cells will 0, one try per cell (but many will fail)
+    function pick<T>(xs: readonly T[]): T {
+      return xs[Math.floor(Math.random() * xs.length)];
+    }
+    const outside = [f.grid.cells[0]];
+    for (let i = h * w; i > 0; i--) {
+      const h1 = pick(pick(outside).incident.filter(h => pos(f.uf.find(h.twin.cell.index)) !== 0));
+      try {
+        const o = h1.twin.cell;
+        let g = f.update(f.uf.union(0, h1.twin.cell.index));
+        g = g.vertexCheck();
+        g.checkRules();
+        g.checkConnectedWithRemoval(0);
+        f = g;
+        outside.push(o);
+      } catch (err) {
+        // try a different cell...
+      }
+    }
+    return f;
+  }
+
+  static random(h: number, w: number): Fence {
+    let f = Fence.create(h, w);
+    // Attempt to fill cells will 0, one try per cell (but many will fail)
+    function pick<T>(xs: readonly T[]): T {
+      return xs[Math.floor(Math.random() * xs.length)];
+    }
+    const failed = new Set<Cell>();
+    for (let i = 2.5 * h * w; i > 0; i--) {
+      const c = pick(f.grid.cells.flatMap(c => {
+        if (failed.has(c)) return [];
+        const n = c.incident.filter(h => f.uf.find(h.twin.cell.index) === 0).length;
+        if (n === 0) return [];
+        if (n === 1) return [c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c];
+        return [c];
+      }));
+      try {
+        let g = f.update(f.uf.union(0, c.index));
+        g = g.vertexCheck();
+        g.checkRules();
+        g.checkConnectedWithRemoval(0);
+        f = g;
+        failed.clear();
+      } catch (err) {
+        failed.add(c);
+        // try a different cell...
+      }
+    }
+    for (const c of f.grid.cells) {
+      if (f.uf.find(c.index)) f = f.update(f.uf.union(c.index, -1));
+    }
+    return f;
+  }
+}
+
+export function createPuzzle(solution: Fence, type: 'slitherlink'|'masyu'|'corral'|'area51' = 'area51') {
+  const constraint = {
+    slitherlink: new Map<number, number>(),
+    masyu: new Map<number, boolean>(),
+    enclosure: new Map<number, number>(),
+    initial: new Map<number, boolean>(),
+  };
+  //const constraints: MutableConstraints = {};
+  if (type === 'slitherlink' || type === 'area51') {
+    // add all slitherlink constraints
+    for (const c of solution.grid.cells) {
+      if (c.outside) continue;
+      constraint.slitherlink.set(c.index, c.incident.filter(h => solution.edgeType(h)).length);
+    };
+  }
+  if (type === 'masyu' || type === 'area51') {
+    // add all masyu constraints
+  }
+  if (type === 'corral' || type === 'area51') {
+    // add all corral constraints
+  }
+  // TODO - remove redundant slitherlink + corral constraints
+  return new Fence(solution.grid, solution.uf, /*PersistentBinaryUnionFind.create(solution.grid.cells.length), */constraint);
 }
 
 export class Solver {
