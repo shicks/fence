@@ -1,8 +1,8 @@
 // Basic structures....?
 
-import {PersistentBinaryUnionFind} from './pbuf.js';
-import { Cell, Edge, Grid, Halfedge} from './grid.js';
-import {show} from './node.js';
+import { PersistentBinaryUnionFind } from './pbuf.js';
+import { Cell, Edge, Grid, Halfedge, Vertex } from './grid.js';
+import { show } from './node.js';
 import { PersistentUnionFind } from './puf.js';
 import { SortedMultiset } from './sortedmultiset.js';
 
@@ -173,7 +173,6 @@ export class Fence {
         }
       }
     }
-    log(() => `initial fill:\n${show(s)}\n`);
     return s;
   }
 
@@ -193,8 +192,8 @@ export class Fence {
     while (f !== f0) {
       f0 = f;
       f = f.iterate();
-      if (++iterations > 10) {
-        console.log(`prev:\n${show(f0)}\nnext:\n${show(f)}`);
+      if (++iterations > 100) {
+        //console.log(`prev:\n${show(f0)}\nnext:\n${show(f)}`);
         throw new Error('no convergence');
       }
     }
@@ -380,25 +379,14 @@ export class Fence {
       const v = this.grid.vertices[i];
       // NOTE: do very different things based on filled...
       // NOTE: handling edges is a little awk
-      const dirs: Halfedge[][] = [];
-      for (const h of v.incoming) {
-        const dir = [h];
-        dirs.push(dir);
-        let h2 = h.twin; // h2 points to neighbor vertex: walk around it
-        let turns = 2;
-        while (turns > 0) {
-          turns -= h2.cell.outside ? 5 - h2.vert.incoming.length : 1;
-          h2 = h2.next.twin;
+      const dirs = [...rectAround(v)].map(h => {
+        const dir = [];
+        for (const h2 of h ? rectAhead(h.twin) : []) {
+          dir.push(h2.twin);
+          if (dir.length === 2) break;
         }
-        if (turns === 0) {
-          dir.push(h2);
-        }
-        if (h.cell.outside) {
-          for (let i = v.incoming.length; i < 4; i++) {
-            dirs.push([]);
-          }
-        }
-      }
+        return dir;
+      });
       if (dirs.length !== 4) throw new Error(`Bad masyu geometry: ${dirs.length}`);
 
       if (filled) {
@@ -635,7 +623,7 @@ export class Fence {
   //   - possible option: given a cell, try various options (neighbors and
   //     their complement) and look for a contradiction?
 
-  static random2(h: number, w: number): Fence {
+  static random2(h: number, w: number, logger?: Logger): Fence {
     let f = Fence.create(h, w);
     // Attempt to fill cells will 0, one try per cell (but many will fail)
     function pick<T>(xs: readonly T[]): T {
@@ -656,10 +644,11 @@ export class Fence {
         // try a different cell...
       }
     }
+    if (logger) logger('random', f);
     return f;
   }
 
-  static random(h: number, w: number): Fence {
+  static random(h: number, w: number, logger?: Logger): Fence {
     let f = Fence.create(h, w);
     // Attempt to fill cells will 0, one try per cell (but many will fail)
     function pick<T>(xs: readonly T[]): T {
@@ -689,6 +678,7 @@ export class Fence {
     for (const c of f.grid.cells) {
       if (f.uf.find(c.index)) f = f.update(f.uf.union(c.index, -1));
     }
+    if (logger) logger('random', f);
     return f;
   }
 }
@@ -710,18 +700,94 @@ export function createPuzzle(solution: Fence, type: 'slitherlink'|'masyu'|'corra
   }
   if (type === 'masyu' || type === 'area51') {
     // add all masyu constraints
+    for (const v of solution.grid.vertices) {
+      const edges = [...rectAround(v)].flatMap((h, i) => {
+        if (!h) return [];
+        let count = 0;
+        for (const h2 of rectAhead(h.twin)) {
+          if (solution.edgeType(h2)) {
+            count++;
+          } else {
+            break;
+          }
+        }
+        return count ? [[count, i]] : [];
+      });
+      if (edges.length !== 2) continue;
+      if ((edges[0][1] ^ edges[1][1]) === 2) {
+        // straight through
+        if (edges[0][0] > 1 && edges[1][0] > 1) continue;
+        constraint.masyu.set(v.index, false);
+      } else {
+        // right angle
+        if (edges[0][0] < 2 || edges[1][0] < 2) continue;
+        constraint.masyu.set(v.index, true);
+      }
+    }
   }
   if (type === 'corral' || type === 'area51') {
     // add all corral constraints
   }
   // TODO - remove redundant slitherlink + corral constraints
-  return new Fence(solution.grid, solution.uf, /*PersistentBinaryUnionFind.create(solution.grid.cells.length), */constraint);
+  function uf(): PersistentBinaryUnionFind {
+    return PersistentBinaryUnionFind.create(solution.grid.cells.length);
+  }
+  // let required = 0;
+  // let removed = 0;
+  // let remaining = constraint.slitherlink.size;
+  // for (const [k, v] of shuffle([...constraint.slitherlink])) {
+  //   constraint.slitherlink.delete(k);
+  //   try {
+  //     new Solver(new Fence(solution.grid, uf(), constraint)).solve();
+  //     console.log(`Removed ${k}:${v} \t ${++removed} removed, ${--remaining} remaining`);
+  //   } catch (err) {
+  //     constraint.slitherlink.set(k, v);
+  //     console.log(`Failed to remove ${k}:${v} \t ${++required} required, ${--remaining} remaining`);
+  //   }
+  // }
+  return new Fence(solution.grid, uf(), constraint);
 }
+
+function shuffle<T>(xs: T[]): T[] {
+  const out = [...xs];
+  for (let i = 0; i < xs.length - 1; i++) {
+    const j = Math.floor(Math.random() * (xs.length - i - 1)) + i + 1;
+    const tmp = out[j];
+    out[j] = out[i];
+    out[i] = tmp;
+  }
+  return out;
+}
+
+
+type Logger = (msg: string, f: Fence) => void;
 
 export class Solver {
   fence: Fence;
   constructor(fence: Fence) {
-    this.fence = fence.handleInitialCases();
+    this.fence = fence;
+  }
+
+  solve(logger?: Logger): Fence {
+    if (logger) logger('initial state', this.fence);
+    this.fence = this.fence.handleInitialCases();
+    let i = 100;
+    let progress;
+    do {
+      progress = false;
+      if (this.iterateToFixedPoint()) progress = true;
+      if (this.slowChecks()) progress = true;
+      //if (progress) console.log(show(s.fence), '\n');
+    } while (progress && --i);
+    for (const c of this.fence.grid.cells) {
+      if (pos(this.fence.uf.find(c.index))) {
+        const reason = i ? `fixed point` : `gave up`;
+        if (logger) logger('failed', this.fence);
+        throw new Error(`Unable to solve puzzle: ${reason}`);
+      }
+    }
+    if (logger) logger('solved', this.fence);
+    return this.fence;
   }
 
   iterateToFixedPoint(): boolean { // true if progress was made
@@ -792,6 +858,33 @@ export class Solver {
     }
     return progress;
   }
+}
+
+// Given a vertex, generates the four halfedges around it, leaving
+// blanks for external directions with no edges.
+function* rectAround(v: Vertex): Generator<Halfedge|null> {
+  for (const h of v.incoming) {
+    yield h;
+    if (h.cell.outside) {
+      for (let i = v.incoming.length; i < 4; i++) {
+        yield null;
+      }
+    }
+  }
+}
+
+// Given a halfedge, generates halfedges in a straight line.
+function* rectAhead(h: Halfedge): Generator<Halfedge> {
+  let turns;
+  do {
+    yield h;
+    turns = 2;
+    while (turns > 0) {
+      turns -= h.cell.outside ? 5 - h.vert.incoming.length : 1;
+      h = h.next.twin;
+    }
+    h = h.twin;
+  } while (turns === 0);
 }
 
 // This is a multiset where elements can go negative.

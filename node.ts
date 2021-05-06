@@ -61,6 +61,10 @@ export function showGrid(g: Grid,
 
 }
 
+export function log(msg: string, f: Fence): void {
+  console.log(`${msg}\n${show(f)}\n`);
+}
+
 export function show(f: Fence,
                      sc: (c: Cell, f: Fence) => unknown = showCell,
                      sv: (v: Vertex, f: Fence) => unknown = showVert): string {

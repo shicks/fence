@@ -1,5 +1,5 @@
 import { createPuzzle, Fence, Solver } from './fence.js';
-import { show } from './node.js';
+import { log, show } from './node.js';
 
 let s1 = Fence.create(10, 10, {
   slitherlink: [[3, 4, 2],
@@ -117,21 +117,12 @@ s3a = area51(12, '..3.2.............21...&...2..312..230....3................3.3
 
 s3 = area51(15, '.......3................&...2.11..........2.1.....22........2.......$......3....3.......&.....2...&.3...$&..1.........H..M.2.3...1...1.2.....3...$2.....3..3..2.........&.11.....3....2....2...3..3....3.&..3.3....2.$3...2....32..1...2...3..2..1..............1........02.2..1......2...&.....2.......13.22..2.N3.&...........&.3......&.......&.30....$2$2.2.3..2.12.........3.3.2....2.3...&......$.........&....__@___O___@____O____O______@_________O_______O___O________OO__OO_________@___________________O__O_________OO_O___________________________________________O_____________@O__@OO_____________@___O_______________________@___O________OO___O_O________________O_____________________________________O____O________O__O______O___O____O__O____________@______________O___@_________________________O___________O_____OOO_O_______OO_____________________@_________@');
 
-console.log(show(createPuzzle(Fence.random(20, 20))));
+new Solver(createPuzzle(Fence.random(10, 10, log), 'masyu')).solve(log);
 if (1 < 2) process.exit(0);
 
 let [] = [s1, s2, s3, s3a];
-const s = new Solver(s3);
+new Solver(s3).solve(log);
 
-let i = 100;
-let progress;
-do {
-  progress = false;
-  if (s.iterateToFixedPoint()) progress = true;
-  if (s.slowChecks()) progress = true;
-  if (progress) console.log(show(s.fence), '\n');
-} while (progress && --i);
-if (!i) console.log(`gave up`);
 //if (!progress) console.log(`done with ${i} iterations remaining`);
 
 //(PersistentBinaryUnionFind as any).EXPECT_FROZEN = true;
