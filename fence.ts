@@ -727,11 +727,78 @@ export function createPuzzle(solution: Fence, type: 'slitherlink'|'masyu'|'corra
   }
   if (type === 'corral' || type === 'area51') {
     // add all corral constraints
+    for (const c of solution.grid.cells) {
+      const color = solution.uf.find(c.index);
+      if (color === 0) constraint.initial.set(c.index, false);
+      if (color === -1) {
+        constraint.initial.set(c.index, true);
+        let count = 1;
+        for (let h of c.incident) {
+          h = h.twin;
+          while (solution.uf.find(h.cell.index) === -1) {
+            count++;
+            h = h.next.next.twin;
+          }
+        }
+        constraint.enclosure.set(c.index, count);
+      }
+    }
   }
   // TODO - remove redundant slitherlink + corral constraints
   function uf(): PersistentBinaryUnionFind {
     return PersistentBinaryUnionFind.create(solution.grid.cells.length);
   }
+  const removable: [Map<number, any>, number][] = [];
+  let removed = 0;
+  let required = 0;
+  let remaining = 0;
+  let types = new SortedMultiset<string>();
+  const maps = new Map<Map<number, any>, string>([
+    [constraint.enclosure, 'en'],
+    [constraint.initial, 'in'],
+    [constraint.masyu, 'ma'],
+    [constraint.slitherlink, 'sl']]);
+  for (const [map, name] of maps) {
+    for (const [k, v] of map) {
+      removable.push([map, k]);
+      ++remaining;
+      const typeKey = name + (typeof v === 'boolean' ? v : '');
+      types.add(typeKey);
+      // Prefer to remove enclosure constraints and filled circles a little bit more.
+      // I think the former is reasonable because there's twice as many
+      // opportunities to remove the initial constraints as enclosure,
+      // so more of them will end up getting removed initially, maybe?
+      if (map === constraint.enclosure) removable.push([map, k]);
+      //if (type === 'area51' && map === constraint.masyu && v) removable.push([map, k]);
+    }
+  }
+  function remove<V extends unknown>(map: Map<number, V>, k: number, force = false) {
+    if (!map.has(k)) return; // note: will re-test the same failed ones multiple times
+    const name = maps.get(map)!;
+    const v = map.get(k)!;
+    const typeKey = name + (typeof v === 'boolean' ? v : '');
+    if (types.count(typeKey) < 2) return; // don't delete the last of any type
+    try {
+      map.delete(k);
+      new Solver(new Fence(solution.grid, uf(), constraint)).solve();
+      console.log(`Removed ${name}[${k}]:${v} \t ${++removed} removed, ${--remaining} remaining`);
+      types.add(typeKey, -1);
+    } catch (err) {
+      if (force) throw new Error(`Fail: required redundant clue ${name}[${k}]`);
+      map.set(k, v);
+      console.log(`Retained ${name}[${k}]:${v} \t ${++required} required, ${--remaining} remaining`);
+      if (map !== constraint.masyu) { // NOTE: typecheck fails without `extends unknown`
+        for (const m of maps.keys()) {
+          if (m === constraint.masyu || m === map) continue;
+          if (m.has(k)) remove(m, k, true);
+        }
+      }
+    }
+  }
+  for (const [map, k] of shuffle(removable)) {
+    remove(map, k);
+  }
+
   // let required = 0;
   // let removed = 0;
   // let remaining = constraint.slitherlink.size;
