@@ -67,16 +67,19 @@ export function log(msg: string, f: Fence): void {
 
 export function show(f: Fence,
                      sc: (c: Cell, f: Fence) => unknown = showCell,
-                     sv: (v: Vertex, f: Fence) => unknown = showVert): string {
+                     sv: (v: Vertex, f: Fence) => unknown = showVert,
+                     useColor = true): string {
   // Figure out relevant colors to show
   const colorSet = new SortedMultiset<number>();
   for (const cell of f.grid.cells) {
     colorSet.add(pos(f.uf.find(cell.index)));
   }
   const colorMap = new Map<number, number>();
-  for (const [c, count] of colorSet) {
-    if (colorMap.size >= colors.length || count < 2) break;
-    colorMap.set(c, colors[colorMap.size]);
+  if (useColor) {
+    for (const [c, count] of colorSet) {
+      if (colorMap.size >= colors.length || count < 2) break;
+      colorMap.set(c, colors[colorMap.size]);
+    }
   }
   // Delegate to showGrid.
   return showGrid(
@@ -95,13 +98,23 @@ export function show(f: Fence,
       if (c1 === c2) {
         let col = colorMap.get(pos(c1));
         if (col && c1 < 0) col = (col * 0x101) >> 4 & 0xff;
-        const txt = horiz ? ' × ' : '×';
+        const txt = horiz ? '   ' : ' '; // ? ' × ' : '×';
         const esc = col ? `\x1b[38;5;${col & 0xf};48;5;${col >> 4}m` : '';
         return `${esc}${txt}${col ? '\x1b[m' : ''}`;
       }
       if (c1 === ~c2) return horiz ? '———' : '|';
       return horiz ? '···' : ':';
-    }, (v) => sv(v, f));
+    }, (v) => {
+      const all = [...new Set(v.incoming.map(h => f.uf.find(h.cell.index)))];
+      let esc = '';
+      if (all.length === 1) {
+        let col = colorMap.get(pos(all[0]));
+        if (col && all[0] < 0) col = (col * 0x101) >> 4 & 0xff;
+        esc = col ? `\x1b[38;5;${col & 0xf};48;5;${col >> 4}m` : '';
+      }
+      const txt = sv(v, f);
+      return `${esc}${txt}${esc ? '\x1b[m' : ''}`;
+    });
 }
 
 function pos(x: number) {

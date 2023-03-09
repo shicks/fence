@@ -757,6 +757,7 @@ export function createPuzzle(solution: Fence, type: 'slitherlink'|'masyu'|'corra
       }
     }
     console.log(show(new Fence(solution.grid, uf(), constraint)), '\n');
+    console.log(show(new Fence(solution.grid, solution.uf, constraint), undefined, undefined, false), '\n');
   }
 
   function uf(): PersistentBinaryUnionFind {
@@ -807,6 +808,9 @@ export function createPuzzle(solution: Fence, type: 'slitherlink'|'masyu'|'corra
           if (m.has(k)) remove(m, k, true);
         }
       }
+    }
+    if (remaining % 40 === 0) {
+      console.log(show(new Fence(solution.grid, solution.uf, constraint), undefined, undefined, false), '\n');
     }
   }
   for (const [map, k] of shuffle(removable)) {
