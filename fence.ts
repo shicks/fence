@@ -744,7 +744,21 @@ export function createPuzzle(solution: Fence, type: 'slitherlink'|'masyu'|'corra
       }
     }
   }
-  // TODO - remove redundant slitherlink + corral constraints
+  // Pre-remove redundant slitherlink + corral constraints
+  {
+    // Note: weight slitherlink clues to 60%
+    const ms = [constraint.enclosure, constraint.initial,
+                constraint.slitherlink, constraint.slitherlink, constraint.slitherlink];
+    const keys = new Set([...ms[0].keys(), ...ms[1].keys(), ...ms[2].keys()]);
+    for (const key of keys) {
+      const has = shuffle(ms.filter(m => m.has(key)));
+      for (const m of has) {
+        if (m !== has[0]) m.delete(key);
+      }
+    }
+    console.log(show(new Fence(solution.grid, uf(), constraint)), '\n');
+  }
+
   function uf(): PersistentBinaryUnionFind {
     return PersistentBinaryUnionFind.create(solution.grid.cells.length);
   }
@@ -784,7 +798,7 @@ export function createPuzzle(solution: Fence, type: 'slitherlink'|'masyu'|'corra
       console.log(`Removed ${name}[${k}]:${v} \t ${++removed} removed, ${--remaining} remaining`);
       types.add(typeKey, -1);
     } catch (err) {
-      if (force) throw new Error(`Fail: required redundant clue ${name}[${k}]`);
+      if (force) throw new Error(`Fail: required redundant clue ${name}[${k}]: ${err.stack}\n\n`);
       map.set(k, v);
       console.log(`Retained ${name}[${k}]:${v} \t ${++required} required, ${--remaining} remaining`);
       if (map !== constraint.masyu) { // NOTE: typecheck fails without `extends unknown`
@@ -818,7 +832,8 @@ export function createPuzzle(solution: Fence, type: 'slitherlink'|'masyu'|'corra
 function shuffle<T>(xs: T[]): T[] {
   const out = [...xs];
   for (let i = 0; i < xs.length - 1; i++) {
-    const j = Math.floor(Math.random() * (xs.length - i - 1)) + i + 1;
+    const j = Math.floor(Math.random() * (xs.length - i)) + i;
+    if (i === j) continue;
     const tmp = out[j];
     out[j] = out[i];
     out[i] = tmp;
@@ -843,8 +858,9 @@ export class Solver {
     do {
       progress = false;
       if (this.iterateToFixedPoint()) progress = true;
+      if (logger && progress) logger(`iteration ${101-i}`, this.fence);
       if (this.slowChecks()) progress = true;
-      //if (progress) console.log(show(s.fence), '\n');
+      if (logger && progress) logger(`iteration ${101-i}.5`, this.fence);
     } while (progress && --i);
     for (const c of this.fence.grid.cells) {
       if (pos(this.fence.uf.find(c.index))) {
